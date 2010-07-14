@@ -36,7 +36,6 @@
 
 #include <cns3000.h>
 
-//#define CAVIUM_RELOCATE 1
 
 /*
  *************************************************************************
@@ -93,14 +92,6 @@ _TEXT_BASE:
 .globl _armboot_start
 _armboot_start:
 	.word _start
-
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-.globl _armboot_mem_end
-_armboot_mem_end:
-	.word	0x08000000
-#endif
-#endif
 
 /*
  * These are defined in the board-specific linker script.
@@ -218,7 +209,7 @@ primary_core:
 
 
 	mov r3, #0x51		// EEPROM Device Address
-	ldr r4, =0x14A	// EEPROM Offset
+	mov r4, #0x4A	// EEPROM Offset
 
 	bl i2c_read_byte
 	mov r6, r5
@@ -234,7 +225,8 @@ primary_core:
 	add r4, r4, #1
 	bl i2c_read_byte
 	orr r6, r6, r5, lsl #24
-	
+
+	//ldr r6, =0xffffffff
 
 	// This isn't remap
 	ldr r0, =0x77000000
@@ -254,19 +246,9 @@ primary_core:
 relocate:				/* relocate U-Boot to RAM	    */
 	adr	r0, _start		/* pc relative  address of label    */
 
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-	ldr	r1, =0x20000000
-#else
 	ldr	r1, _TEXT_BASE		/* linked image address of label    */
 	cmp	r0, r1                  /* test if we run from flash or RAM */
 	beq	stack_setup             /* ifeq we are in the RAM copy      */
-#endif
-#else
-	ldr	r1, _TEXT_BASE		/* linked image address of label    */
-	cmp	r0, r1                  /* test if we run from flash or RAM */
-	beq	stack_setup             /* ifeq we are in the RAM copy      */
-#endif
 
 	ldr	r2, _armboot_start
 	ldr	r3, _bss_start
@@ -298,15 +280,7 @@ linux_copy_loop:
 
 	/* Set up the stack						    */
 stack_setup:
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-	ldr	r0, _armboot_mem_end
-#else
 	ldr	r0, _TEXT_BASE		/* upper 128 KiB: relocated uboot   */
-#endif
-#else
-	ldr	r0, _TEXT_BASE		/* upper 128 KiB: relocated uboot   */
-#endif
 	sub	r0, r0, #CFG_MALLOC_LEN	/* malloc area                      */
 	sub	r0, r0, #CFG_GBL_DATA_SIZE /* bdinfo                        */
 #ifdef CONFIG_USE_IRQ
@@ -374,15 +348,7 @@ _start_armboot:
 	@ carve out a frame on current user stack
 	sub	sp, sp, #S_FRAME_SIZE
 	stmia	sp, {r0 - r12}	@ Save user registers (now in svc mode) r0-r12
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-	ldr	r2, _armboot_mem_end
-#else
 	ldr	r2, _armboot_start
-#endif
-#else
-	ldr	r2, _armboot_start
-#endif
 	sub	r2, r2, #(CONFIG_STACKSIZE+CFG_MALLOC_LEN)
 	sub	r2, r2, #(CFG_GBL_DATA_SIZE+8)  @ set base 2 words into abort stack
 	@ get values for "aborted" pc and cpsr (into parm regs)
@@ -416,15 +382,7 @@ _start_armboot:
 	.endm
 
 	.macro get_bad_stack
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-	ldr	r13, _armboot_mem_end
-#else
 	ldr	r13, _armboot_start		@ setup our mode stack
-#endif
-#else
-	ldr	r13, _armboot_start		@ setup our mode stack
-#endif
 	sub	r13, r13, #(CONFIG_STACKSIZE+CFG_MALLOC_LEN)
 	sub	r13, r13, #(CFG_GBL_DATA_SIZE+8) @ reserved a couple spots in abort stack
 

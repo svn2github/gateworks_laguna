@@ -195,7 +195,7 @@ int i2c_read (uchar chip, uint addr, int alen, uchar * buffer, int len)
 				printf ("I2C read: I/O error\n");
 				return 1;
 			}
-			udelay(10);
+			udelay(1000);
 		}
 	}
 
@@ -224,7 +224,7 @@ int i2c_write (uchar chip, uint addr, int alen, uchar * buffer, int len)
 				printf ("I2C read: I/O error\n");
 				return 1;
 			}
-			udelay(10);
+			udelay(1000);
 		}
 	}
 
@@ -234,7 +234,7 @@ int i2c_write (uchar chip, uint addr, int alen, uchar * buffer, int len)
 static int wait_for_status(void)
 {
 	while ((I2C_INTERRUPT_STATUS_REG & 0x3) == 0);
-	udelay(1);
+	udelay(100);
 	if ((I2C_INTERRUPT_STATUS_REG & 0x3) == 2) {
 		return 0;
 	} else {

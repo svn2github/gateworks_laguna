@@ -44,7 +44,8 @@ DECLARE_GLOBAL_DATA_PTR;
 static ulong timestamp;
 static ulong lastdec;
 
-#define READ_TIMER (*(volatile ulong *)(CFG_TIMERBASE))
+#define READ_TIMER1 (*(volatile ulong *)(CFG_TIMERBASE))
+#define READ_TIMER2 (*(volatile ulong *)(CFG_TIMERBASE + 0x10))
 
 static void timer_init(void);
 
@@ -97,6 +98,7 @@ int misc_init_r (void)
 	uint8_t model[16];
 
 	char ethaddr[20];
+
   char *tmp = getenv("ethaddr");
   char *tmp1 = getenv("eth1addr");
   char *tmp2 = getenv("eth2addr");
@@ -205,6 +207,7 @@ int dram_init (void)
 
 static void timer_init(void)
 {
+	// Setup timer to be a 1khz timer to make things easy
 	CLK_GATE_REG |= (1 << 14);
 	SOFT_RST_REG &= (~(1 << 14));
 	SOFT_RST_REG |= (1 << 14);
@@ -214,7 +217,7 @@ static void timer_init(void)
 	 */	
 	*(volatile ulong *)(CFG_TIMERBASE + 0x00) = CFG_TIMER_RELOAD;
 	*(volatile ulong *)(CFG_TIMERBASE + 0x04) = CFG_TIMER_RELOAD;
-	*(volatile ulong *)(CFG_TIMERBASE + 0x30) |= 0x0201;	/* Enabled,
+	*(volatile ulong *)(CFG_TIMERBASE + 0x30) |= 0x0203;	/* Enabled,
 								 * down counter,
 								 * no interrupt,
 								 * 32-bit,
@@ -227,34 +230,25 @@ int interrupt_init (void){
 	return 0;
 }
 
-/* delay x useconds AND perserve advance timstamp value */
-/* ASSUMES timer is ticking at 1 msec			*/
+// udelay, exactly what it says, delay 1us
 void udelay (unsigned long usec)
 {
-	/* scott.patch */
-#if 0
-	delay(usec);
-	return;
-#endif
 
-	ulong tmo, tmp;
-#if 0
-	tmo = usec/1000;
-#else
-	tmo = usec/10;
-#endif
+	/*
+	 *  This could possibly be a problem due to overflow
+	 *  If usec is greater than 57266230 then we would have
+	 *  an overflow and it wouldn't work right
+	 */
 
-	tmp = get_timer (0);		/* get current timestamp */
+	*(volatile ulong *)(CFG_TIMERBASE + 0x30) &= ~0x8;	/* Disable */
+	*(volatile ulong *)(CFG_TIMERBASE + 0x10) = 75000000 / 1000000 * usec;
+	*(volatile ulong *)(CFG_TIMERBASE + 0x14) = 0;
+	*(volatile ulong *)(CFG_TIMERBASE + 0x30) |= 0x0408;	/* Enabled, */
 
-	if( (tmo + tmp + 1) < tmp )	/* if setting this forward will roll time stamp */
-		reset_timer_masked ();	/* reset "advancing" timestamp to 0, set lastdec value */
-	else
-		tmo += tmp;		/* else, set advancing stamp wake up time */
-
-	while (get_timer_masked () < tmo)/* loop till event */
-		/*NOP*/;
+	while (READ_TIMER2 != 0);
 }
 
+// timestamp ticks at 1ms
 ulong get_timer (ulong base)
 {
 	return get_timer_masked () - base;
@@ -263,29 +257,22 @@ ulong get_timer (ulong base)
 void reset_timer_masked (void)
 {
 	/* reset time */
-	lastdec = READ_TIMER/1000;  /* capure current decrementer value time */
+	lastdec = READ_TIMER1;
 	timestamp = 0;	       	    /* start "advancing" time stamp from 0 */
 }
 
-/* ASSUMES 1MHz timer */
-ulong get_timer_masked (void)
+/* ASSUMES 1kHz timer */
+ulong get_timer_masked(void)
 {
-	ulong now = READ_TIMER/1000;	/* current tick value @ 1 tick per msec */
+	ulong now = READ_TIMER1;
 
-	//printf("now: %x\n", now);
-	if (lastdec >= now) {		/* normal mode (non roll) */
+	if (lastdec >= now) {
 		/* normal mode */
 		timestamp += lastdec - now; /* move stamp forward with absolute diff ticks */
 	} else {			/* we have overflow of the count down timer */
-		/* nts = ts + ld + (TLV - now)
-		 * ts=old stamp, ld=time that passed before passing through -1
-		 * (TLV-now) amount of time after passing though -1
-		 * nts = new "advancing time stamp"...it could also roll and cause problems.
-		 */
 		timestamp += lastdec + TIMER_LOAD_VAL - now;
 	}
 	lastdec = now;
-
 	return timestamp;
 }
 
@@ -293,22 +280,4 @@ ulong get_timer_masked (void)
  *  u32 get_board_rev() for ARM supplied development boards
  */
 ARM_SUPPLIED_GET_BOARD_REV
-
-#if defined(CONFIG_CNS3000) && defined(CONFIG_FLASH_CFI_LEGACY)
-ulong board_flash_get_legacy (ulong base, int banknum, flash_info_t *info)
-{
-	if (banknum == 0) {     /* non-CFI boot flash */
-#if 0
-		info->portwidth = FLASH_CFI_8BIT;
-		info->chipwidth = FLASH_CFI_BY8;
-		info->interface = FLASH_CFI_X8X16;
-#endif
-		info->portwidth = FLASH_CFI_16BIT;
-		info->chipwidth = FLASH_CFI_BY16;
-		info->interface = FLASH_CFI_X8X16;
-		return 1;
-	} else
-		return 0;
-}
-#endif
 

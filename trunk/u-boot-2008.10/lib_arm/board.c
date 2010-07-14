@@ -55,8 +55,6 @@
 #include "../drivers/net/lan91c96.h"
 #endif
 
-//#define CAVIUM_RELOCATE 1
-
 DECLARE_GLOBAL_DATA_PTR;
 
 ulong monitor_flash_len;
@@ -284,15 +282,7 @@ void start_armboot (void)
 #endif
 
 	/* Pointer is writable since we allocated a register for it */
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-	gd = (gd_t*)(_armboot_mem_end - CFG_MALLOC_LEN - sizeof(gd_t));
-#else
 	gd = (gd_t*)(_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t));
-#endif
-#else
-	gd = (gd_t*)(_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t));
-#endif
 	/* compiler optimization barrier needed for GCC >= 3.4 */
 	__asm__ __volatile__("": : :"memory");
 
@@ -346,15 +336,7 @@ void start_armboot (void)
 #endif /* CONFIG_LCD */
 
 	/* armboot_start is defined in the board-specific linker script */
-#ifdef CAVIUM_RELOCATE
-#ifdef CONFIG_CNS3000
-	mem_malloc_init (_armboot_mem_end - CFG_MALLOC_LEN);
-#else
 	mem_malloc_init (_armboot_start - CFG_MALLOC_LEN);
-#endif
-#else
-	mem_malloc_init (_armboot_start - CFG_MALLOC_LEN);
-#endif
 
 #if defined(CONFIG_CMD_NAND)
 	puts ("NAND:  ");

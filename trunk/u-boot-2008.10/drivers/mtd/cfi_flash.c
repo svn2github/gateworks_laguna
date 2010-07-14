@@ -659,7 +659,7 @@ static int flash_status_check (flash_info_t * info, flash_sect_t sector,
 #if CFG_HZ != 1000
 	tout *= CFG_HZ/1000;
 #endif
-	tout *= CFG_HZ;
+
 	/* Wait for command completion */
 	start = get_timer (0);
 	while (flash_is_busy (info, sector)) {

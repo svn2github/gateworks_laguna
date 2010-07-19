@@ -15,28 +15,24 @@ before proceeding.
 1. Download OpenWrt Backfire Release to development directory
 
 # cd /usr/src
-# svn co svn://svn.openwrt.org/openwrt/branches/backfire
+# svn co svn://svn.openwrt.org/openwrt/branches/backfire@22162
 
 
-2. Download OpenWrt Packages
--- Note --
-When the menuconfig is displayed, just exit and DON'T save to continue
-
-# cd /usr/src/backfire
-# make package/symlinks
-# make menuconfig
-
-
-3. Download Gateworks OpenWrt Patches
+2. Download Gateworks OpenWrt Patches
 
 # cd /usr/src
 # svn co http://svn.gateworks.com/bsp/laguna/trunk/openwrt_patches
 
 
-4. Apply Gateworks Patches to OpenWrt Tree
+3. Apply Gateworks Patches to OpenWrt Tree
 
 # /usr/src/backfire/scripts/patch-kernel.sh /usr/src/backfire \
-/usr/src/openwrt_patches/patches
+/usr/src/openwrt_patches/patches/base
+
+4. Download OpenWrt Packages
+
+# cd /usr/src/backfire
+# make package/symlinks
 
 
 5. Add Packages (or not)

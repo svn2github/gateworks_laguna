@@ -156,3 +156,25 @@ Index: Config.in
  		help
  		  If your target CPU does not have a Floating Point Unit (FPU) or a
  		  kernel FPU emulator, but you still wish to support floating point
+Index: Config.in
+===================================================================
+--- a/target/Config.in	(revision 22162)
++++ b/target/Config.in	(working copy)
+@@ -69,6 +69,9 @@
+ config arm
+ 	bool
+ 
++config armv6k
++	bool
++
+ config armeb
+ 	select BIG_ENDIAN
+ 	bool
+@@ -139,6 +142,7 @@
+ config ARCH
+ 	string
+ 	default "arm"       if arm
++	default "armv6k"   if armv6k
+ 	default "armeb"     if armeb
+ 	default "avr32"     if avr32
+ 	default "cris"      if cris

@@ -65,6 +65,64 @@ static inline void delay (unsigned long loops)
 		"bne 1b":"=r" (loops):"0" (loops));
 }
 
+
+#define IO_WRITE(addr, val) (*(volatile unsigned int *)(addr) = (val))
+#define IO_READ(addr) (*(volatile unsigned int *)(addr))
+#define PCIE_CLK_GATE_REG 0x77000014
+#define MISC_PCIE0_REG 0x76000900
+#define MISC_PCIE1_REG 0x76000A00
+#define PCIE0_CTRL 0x7600095C
+#define PCIE1_CTRL 0x76000A5C
+#define PMU_SOFT_RST   0x77000004
+
+static void pcie_init(void)
+{
+	unsigned char eeprom;
+	unsigned int temp;
+
+	i2c_read(0x51, 0x43, 1, &eeprom, 1);
+	if (eeprom & 0x2) // pcie0 init
+	{
+	  temp = IO_READ(PCIE_CLK_GATE_REG);
+	  temp |= (1 << 28);
+	  IO_WRITE(PCIE_CLK_GATE_REG, temp);
+
+	  temp = IO_READ(MISC_PCIE0_REG);
+	  temp |= (1 << 11);
+	  IO_WRITE(MISC_PCIE0_REG, temp);
+
+	  temp = IO_READ(PMU_SOFT_RST);
+	  temp &= ~(1 << 17);
+	  IO_WRITE(PMU_SOFT_RST, temp);
+	  temp |= (1 << 17);
+	  IO_WRITE(PMU_SOFT_RST, temp);
+
+		temp = IO_READ(PCIE0_CTRL);
+		temp |= 0x3;
+		IO_WRITE(PCIE0_CTRL, temp);
+	}
+	if (eeprom & 0x4) // pcie1 init
+	{
+	  temp = IO_READ(PCIE_CLK_GATE_REG);
+	  temp |= (1 << 29);
+	  IO_WRITE(PCIE_CLK_GATE_REG, temp);
+
+	  temp = IO_READ(MISC_PCIE1_REG);
+	  temp |= (1 << 11);
+	  IO_WRITE(MISC_PCIE1_REG, temp);
+
+	  temp = IO_READ(PMU_SOFT_RST);
+	  temp &= ~(1 << 18);
+	  IO_WRITE(PMU_SOFT_RST, temp);
+	  temp |= (1 << 18);
+	  IO_WRITE(PMU_SOFT_RST, temp);
+
+		temp = IO_READ(PCIE1_CTRL);
+		temp |= 0x3;
+		IO_WRITE(PCIE1_CTRL, temp);
+	}
+}
+
 /*
  * Miscellaneous platform dependent initialisations
  */
@@ -84,6 +142,7 @@ int board_init (void)
 	//dram_init();
 	scsi_init();
 #endif
+	pcie_init();
 	return 0;
 }
 

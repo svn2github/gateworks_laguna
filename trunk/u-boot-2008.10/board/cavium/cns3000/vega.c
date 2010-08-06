@@ -142,7 +142,6 @@ int board_init (void)
 	//dram_init();
 	scsi_init();
 #endif
-	pcie_init();
 	return 0;
 }
 
@@ -238,6 +237,7 @@ int misc_init_r (void)
 *************************************************************/
 int checkboard(void)
 {
+	pcie_init();
 	return (0);
 }
 

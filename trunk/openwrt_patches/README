@@ -82,13 +82,13 @@ i.e. Set localip to 192.168.1.211 and serverip to 192.168.1.14
 11. Copy Linux Kernel to the Board
 
 # tftpboot 0x800000 laguna/uImage
-# cp.b 0x800000 0x10000000 $(filesize)
+# cp.b 0x800000 0x10060000 $(filesize)
 
 
 12. Copy rootfs to the Board
 
 # tftpboot 0x800000 laguna/rootfs
-# cp.b 0x800000 0x10000000 $(filesize)
+# cp.b 0x800000 0x10260000 $(filesize)
 
 
 13. Reboot the board

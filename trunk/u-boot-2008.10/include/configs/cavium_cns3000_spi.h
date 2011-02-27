@@ -180,7 +180,7 @@ The kernel command line & boot command below are for a Cavium Networks CNS3000 b
 */
 
 #define CONFIG_BOOTARGS "console=ttyS0,115200 root=/dev/mtdblock3 rootfstype=squashfs,jffs2 noinitrd init=/etc/preinit"
-#define CONFIG_BOOTCOMMAND "bootm 0x10060000"
+#define CONFIG_BOOTCOMMAND "bootm 0x60080000"
 
 #define CONFIG_NET_MULTI
 #define CONFIG_HAS_ETH1

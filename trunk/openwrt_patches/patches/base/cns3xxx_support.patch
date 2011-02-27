@@ -136,7 +136,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 ===================================================================
 --- trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.patch	(revision 25747)
 +++ trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.patch	(working copy)
-@@ -1,11802 +1,1094 @@
+@@ -1,11802 +1,1102 @@
 ---- /dev/null
 -+++ b/drivers/net/cns3xxx/cns3xxx_config.h
 -@@ -0,0 +1,136 @@
@@ -307,7 +307,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -@@ -0,0 +1,436 @@
 -+/*******************************************************************************
 ++++ b/drivers/net/cns3xxx_eth.c
-+@@ -0,0 +1,1064 @@
++@@ -0,0 +1,1072 @@
 ++/*
 ++ * Intel IXP4xx Ethernet driver for Linux
  + *
@@ -2484,9 +2484,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			fsqf = 1;
 -+#endif
 -+			rxcount = get_rx_ring_size(&priv->rx_ring[queue_index]);
-++			break;
- +		}
- +	}
+-+		}
+-+	}
 -+#ifndef CONFIG_CNS3XXX_NAPI
 -+	if (mode == 1) {
 -+		fsqf = 1;
@@ -2567,20 +2566,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	//spin_unlock(&rx_lock);
 -+receive_packet_exit:
 -+	return;
- +}
- +
+-+}
+-+
 -+irqreturn_t cns3xxx_fsrc_ring0_isr(int irq, void *dev_id)
-++static int eth_xmit(struct sk_buff *skb, struct net_device *dev)
- +{
+-+{
 -+	struct net_device *netdev = dev_id;
 -+	CNS3XXXPrivate *priv = netdev_priv(netdev);
-++	struct port *port = netdev_priv(dev);
-++	struct sw *sw = port->sw;
-++	struct _tx_ring *tx_ring = sw->tx_ring;
-++	struct tx_desc *tx_desc;
-++	u32 phys;
-++	unsigned long flags;
- +
+-+
 -+	priv->ring_index=0;
 -+
 -+#ifdef CONFIG_CNS3XXX_NAPI
@@ -2811,27 +2803,20 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	if (MSG_LEVEL == DUMP_TX_PKT_INFO) {
 -+		print_packet(tx_buffer->skb->data, tx_buffer->tx_desc->sdl);
 -+		//dump_tx_desc(tx_buffer->tx_desc);
-++	if (unlikely(skb->len > MAX_MRU)) {
-++		dev_kfree_skb(skb);
-++		dev->stats.tx_errors++;
-++		return NETDEV_TX_OK;
- +	}
+-+	}
 -+#endif
- +
+-+
 -+        spin_lock_irqsave(&tx_lock, flags);
-++	spin_lock_irqsave(&sw->tx_lock, flags);
- +
+-+
 -+	if (cns3xxx_check_enough_tx_descriptor(priv->tx_ring + ring_index, (nr_frags==0 ) ? 1 : nr_frags) == 0) { 
 -+		// no enough tx descriptor
 -+        	spin_unlock_irqrestore(&tx_lock, flags);
 -+		// re-queue the skb
 -+		return NETDEV_TX_BUSY;
 -+	} 
-++	clear_tx_desc(sw);
- +
+-+
 -+	tx_buffer = get_cur_tx_buffer(priv->tx_ring + ring_index);
-++	tx_desc = &(tx_ring)->desc[tx_ring->cur_index];
- +
+-+
 -+	if (nr_frags == 0) { // non scatter/gather I/O
 -+
 -+		fill_a_skb_to_tx_desc(tx_buffer, skb->data, skb->len, skb, priv, 0, 1, 1);
@@ -2864,27 +2849,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+		tx_index_next(priv->tx_ring + ring_index);
 -+		tx_buffer = get_cur_tx_buffer(priv->tx_ring + ring_index);
-++	if (unlikely(tx_ring->buff_tab[tx_ring->cur_index])) {
-++		spin_unlock_irqrestore(&sw->tx_lock, flags);
-++		return NETDEV_TX_BUSY;
- +	}
- +
-++	tx_ring->buff_tab[tx_ring->cur_index] = skb;
- +
+-+	}
+-+
+-+
 -+	if( nr_frags != 0) {
-++	tx_ring->cur_index = ((tx_ring->cur_index + 1) % TX_DESCS);
-++	spin_unlock_irqrestore(&sw->tx_lock, flags);
- +
+-+
 -+		for (i = 0; i < tx_desc_count ; i++ )
 -+			tx_desc[i]->cown = 0 ; 
-++	phys = dma_map_single(&dev->dev, skb->data, skb->len, DMA_TO_DEVICE);
-++	if (dma_mapping_error(&dev->dev, phys)) {
-++		dev_kfree_skb(skb);
-++		dev->stats.tx_dropped++;
-++		return NETDEV_TX_OK;
- +	}
-++	tx_desc->sdp = phys;
- +
+-+	}
+-+
 -+	mb();
 -+	enable_tx_dma(ring_index, 1);
 -+
@@ -2912,31 +2885,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	// so I don't mask it.
 -+	set_bit(0, &priv->is_qf);
 -+}
-++#if 0
-++	tx_desc->sdl = skb->len;
-++	tx_desc->fsd = 1;
-++	tx_desc->lsd = 1;
-++	tx_desc->fr = 1;
- +#else
+-+#else
 -+#ifdef CNS3XXX_USE_MASK
 -+	cns3xxx_write_pri_mask(0xb0);
 -+#else
 -+	cns3xxx_disable_irq(FSRC_RING0_INTERRUPT_ID);
 -+	cns3xxx_disable_irq(FSQF_RING0_INTERRUPT_ID);
-++	tx_desc->config0 &= ~0xFFFF;
-++	tx_desc->config0 |= skb->len;
-++	tx_desc->config0 |= 0x34070000;
- +#endif
-++	if (port->id == 3)
-++		tx_desc->pmap = (1 << 4);
-++	else
-++		tx_desc->pmap = (1 << port->id);
- +
-++	wmb();
-++	tx_desc->cown = 0;
-++	atomic_inc(&tx_ring->num_used);
-++	dev->trans_start = jiffies;
- +
+-+#endif
+-+
+-+
 -+	cns3xxx_receive_packet(priv, 1); // Receive at Queue Full Mode
 -+
 -+#ifdef CNS3XXX_USE_MASK
@@ -2950,39 +2907,32 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+#endif // CONFIG_CNS3XXX_NAPI
 -+
 -+	return IRQ_HANDLED;
-++	return NETDEV_TX_OK;
- +}
+-+}
 -+#endif
- +
+-+
 -+
 -+#if defined(CNS3XXX_DOUBLE_RX_RING)
 -+#ifdef CNS3XXX_FSQF_RING1_ISR
 -+irqreturn_t cns3xxx_fsqf_ring1_isr(int irq, void *dev_id)
-++static int eth_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
- +{
+-+{
 -+	struct net_device *netdev = dev_id;
 -+	CNS3XXXPrivate *priv = netdev_priv(netdev);
 -+	//INTC_CLEAR_EDGE_TRIGGER_INTERRUPT(INTC_GSW_FSQF_BIT_INDEX);
-++	struct port *port = netdev_priv(dev);
- +
+-+
 -+#ifdef CONFIG_CNS3XXX_NAPI
 -+{
 -+	CNS3XXXPrivate *priv = netdev_priv(r1_napi_dev);
 -+	// because in normal state, fsqf only invoke once and set_bit is atomic function.
 -+	// so don't mask it.
 -+	set_bit(0, &priv->is_qf);
-++	if (!netif_running(dev))
-++		return -EINVAL;
-++	return phy_mii_ioctl(port->phydev, if_mii(req), cmd);
- +}
+-+}
 -+#else
 -+	cns3xxx_disable_irq(FSRC_RING1_INTERRUPT_ID);
 -+	cns3xxx_disable_irq(FSQF_RING1_INTERRUPT_ID);
- +
+-+
 -+	cns3xxx_receive_packet(priv, 1); // Receive at Queue Full Mode
 -+	enable_rx_dma(1, 1);
-++/* ethtool support */
- +
+-+
 -+	cns3xxx_enable_irq(FSRC_RING1_INTERRUPT_ID);
 -+	cns3xxx_enable_irq(FSQF_RING1_INTERRUPT_ID);
 -+#endif
@@ -2994,9 +2944,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+#ifdef CNS3XXX_STATUS_ISR
 -+irqreturn_t cns3xxx_status_isr(int irq, void *dev_id)
-++static void cns3xxx_get_drvinfo(struct net_device *dev,
-++			       struct ethtool_drvinfo *info)
- +{
+-+{
 -+	u32 int_status = INTR_STAT_REG;
 -+	u32 i=0;
 -+
@@ -3009,26 +2957,20 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	INTR_STAT_REG = 0xffffffff; // write 1 for clear.
 -+	cns3xxx_enable_irq(STATUS_INTERRUPT_ID);
 -+	return IRQ_HANDLED;
-++	strcpy(info->driver, DRV_NAME);
-++	strcpy(info->bus_info, "internal");
- +}
+-+}
 -+#endif
- +
+-+
 -+
 -+#ifdef CNS3XXX_TSTC_RING0_ISR
 -+irqreturn_t cns3xxx_tstc_ring0_isr(int irq, void *dev_id)
-++static int cns3xxx_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
- +{
+-+{
 -+	return IRQ_HANDLED;
-++	struct port *port = netdev_priv(dev);
-++	return phy_ethtool_gset(port->phydev, cmd);
- +}
+-+}
 -+#endif
- +
+-+
 -+
 -+static int cns3xxx_install_isr(struct net_device *dev)
-++static int cns3xxx_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
- +{
+-+{
 -+	int retval;
 -+	CNS3XXXPrivate *priv = netdev_priv(dev);
 -+	
@@ -3106,13 +3048,11 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+        napi_enable(&sp->napi);
 -+        netif_start_queue(r1_napi_dev);
 -+#endif
-++	struct port *port = netdev_priv(dev);
-++	return phy_ethtool_sset(port->phydev, cmd);
- +}
+-+}
 -+#endif
 -+	// enable cpu port
 -+	enable_port(3, 1);
- +
+-+
 -+	} // end if (install_isr_rc == 0) 
 -+
 -+	++install_isr_rc;
@@ -3122,8 +3062,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+
 -+int cns3xxx_open(struct net_device *dev)
-++static int cns3xxx_nway_reset(struct net_device *dev)
- +{
+-+{
 -+	CNS3XXXPrivate *priv = netdev_priv(dev);
 -+	//static int init_state=0;
 -+	
@@ -3144,10 +3083,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	netif_carrier_on(dev);
 -+
 -+	return 0;
-++	struct port *port = netdev_priv(dev);
-++	return phy_start_aneg(port->phydev);
- +}
- +
+-+}
+-+
 -+static int cns3xxx_uninstall_isr(struct net_device *dev)
 -+{
 -+	CNS3XXXPrivate *priv = netdev_priv(dev);
@@ -3158,18 +3095,11 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+#ifdef CNS3XXX_STATUS_ISR
 -+		free_irq(STATUS_INTERRUPT_ID, intr_netdev);
 -+#endif
-++static struct ethtool_ops cns3xxx_ethtool_ops = {
-++	.get_drvinfo = cns3xxx_get_drvinfo,
-++	.get_settings = cns3xxx_get_settings,
-++	.set_settings = cns3xxx_set_settings,
-++	.nway_reset = cns3xxx_nway_reset,
-++	.get_link = ethtool_op_get_link,
-++};
- +
+-+
 -+#ifdef CNS3XXX_FSQF_RING0_ISR
 -+		free_irq(FSQF_RING0_INTERRUPT_ID, intr_netdev);
 -+#endif
- +
+-+
 -+#ifdef CNS3XXX_TSTC_RING0_ISR
 -+		free_irq(TSTC_RING0_INTERRUPT_ID, intr_netdev);
 -+#endif
@@ -3185,8 +3115,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+
 -+#ifdef CONFIG_CNS3XXX_NAPI
-++static int init_rings(struct sw *sw)
- +{
+-+{
 -+	CNS3XXXPrivate *sp = netdev_priv(napi_dev);
 -+
 -+	napi_disable(&sp->napi);
@@ -3241,8 +3170,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			(boradcast == 1) ? (MAC0_CFG_REG |= (1 << 30)) : (MAC0_CFG_REG &= (~(1 << 30))) ;
 -+			(multicast == 1) ? (MAC0_CFG_REG |= (1 << 29)) : (MAC0_CFG_REG &= (~(1 << 29))) ;
 -+			(unknown == 1) ? (MAC0_CFG_REG |= (1 << 28)) : (MAC0_CFG_REG &= (~(1 << 28))) ;
--+			break;
--+		}
+ +			break;
+ +		}
 -+		case 1:
 -+		{
 -+			(boradcast == 1) ? (MAC1_CFG_REG |= (1 << 30)) : (MAC1_CFG_REG &= (~(1 << 30))) ;
@@ -3257,15 +3186,22 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			(unknown == 1) ? (MAC2_CFG_REG |= (1 << 28)) : (MAC2_CFG_REG &= (~(1 << 28))) ;
 -+			break;
 -+		}
--+	}
--+}
--+
+ +	}
+ +}
+ +
 -+void broadcast_storm_rate(u8 rate)
--+{
+++static int eth_xmit(struct sk_buff *skb, struct net_device *dev)
+ +{
 -+	TC_CTRL_REG &= (~(0xf << 24));
 -+	TC_CTRL_REG |= (rate << 24);
 -+}
--+
+++	struct port *port = netdev_priv(dev);
+++	struct sw *sw = port->sw;
+++	struct _tx_ring *tx_ring = sw->tx_ring;
+++	struct tx_desc *tx_desc;
+++	u32 phys;
+++	unsigned long flags;
+ +
 -+// port: 0, 1, 2 ; port0, port1 and port2
 -+// config general mac port configuration
 -+void cns3xxx_general_mac_cfg(u8 port)
@@ -3289,15 +3225,22 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			cfg = MAC2_CFG_REG;
 -+			break;
 -+		}
--+	}
--+
--+
+++	if (unlikely(skb->len > MAX_MRU)) {
+++		dev_kfree_skb(skb);
+++		dev->stats.tx_errors++;
+++		return NETDEV_TX_OK;
+ +	}
+ +
+++	spin_lock_irqsave(&sw->tx_lock, flags);
+ +
 -+	// txc_check_en: 1 
 -+	cfg |= (1 << 13);
--+
+++	clear_tx_desc(sw);
+ +
 -+	// bp_en: 1
 -+	cfg |= (1 << 17);
--+
+++	tx_desc = &(tx_ring)->desc[tx_ring->cur_index];
+ +
 -+#ifdef CNS3XXX_LEARN_ENABLE
 -+	// learn_dis: 0
 -+	cfg &= (~(1 << 19));
@@ -3341,10 +3284,14 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			MAC2_CFG_REG = cfg;
 -+			break;
 -+		}
--+	}
--+
+++	if (unlikely(tx_ring->buff_tab[tx_ring->cur_index])) {
+++		spin_unlock_irqrestore(&sw->tx_lock, flags);
+++		return NETDEV_TX_BUSY;
+ +	}
+ +
 -+}
--+
+++	tx_ring->buff_tab[tx_ring->cur_index] = skb;
+ +
 -+void cns3xxx_configu_cpu_port(void)
 -+{
 -+	// Set CPU port to general configuration
@@ -3355,7 +3302,9 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	// learn_dis: 1
 -+	CPU_CFG_REG |= (1 << 19);
 -+#endif
--+
+++	tx_ring->cur_index = ((tx_ring->cur_index + 1) % TX_DESCS);
+++	spin_unlock_irqrestore(&sw->tx_lock, flags);
+ +
 -+#ifdef CNS3XXX_AGE_ENABLE
 -+	// age_en: 1
 -+	CPU_CFG_REG |= (1 << 22);
@@ -3388,20 +3337,12 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+static void __init cns3xxx_gsw_hw_init(void)
 -+{
 -+	//u32 mac_port_config;
- +	int i;
+-+	int i;
 -+	//u32 cfg_reg = 0;
 -+        u32 reg_config = 0;
-++	struct _rx_ring *rx_ring = sw->rx_ring;
-++	struct _tx_ring *tx_ring = sw->tx_ring;
- +
+-+
 -+#ifdef CONFIG_SILICON
-++	__raw_writel(0x0, &sw->regs->fs_dma_ctrl0);
-++	__raw_writel(0x0, &sw->regs->dma_auto_poll_cfg);
-++	__raw_writel(0x00000FF0, &sw->regs->dma_ring_ctrl);
-++	__raw_writel(0x80000FF0, &sw->regs->dma_ring_ctrl);
-++	while ((__raw_readl(&sw->regs->dma_ring_ctrl) & 0x40000000) == 0);
-++	__raw_writel(0x00000FF0, &sw->regs->dma_ring_ctrl);
- +
+-+
 -+	//GPIOB_PIN_EN_REG |= (1 << 14); //enable GMII2_CRS
 -+	//GPIOB_PIN_EN_REG |= (1 << 15); //enable GMII2_COL
 -+	GPIOB_PIN_EN_REG |= (1 << 20); //enable MDC
@@ -3410,33 +3351,16 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	cns3xxx_gsw_power_enable();
 -+	cns3xxx_gsw_software_reset();
 -+#endif
-++	if (!(rx_dma_pool = dma_pool_create(DRV_NAME, NULL, RX_POOL_ALLOC_SIZE, 32, 0)))
-++		return -ENOMEM;
- +
+-+
 -+#ifdef CNS3XXX_CONFIG_SIM_MODE
 -+        SLK_SKEW_CTRL_REG |= (1 << 31);
 -+#endif
-++	if (!(rx_ring->desc = dma_pool_alloc(rx_dma_pool, GFP_KERNEL,
-++					      &rx_ring->phys_addr)))
-++		return -ENOMEM;
-++	memset(rx_ring->desc, 0, RX_POOL_ALLOC_SIZE);
- +
-++	/* Setup RX buffers */
-++	for (i = 0; i < RX_DESCS; i++) {
-++		struct rx_desc *desc = &(rx_ring)->desc[i];
-++		struct sk_buff *skb;
-++		if (!(skb = dev_alloc_skb(RX_BUFF_SIZE)))
-++			return -ENOMEM;
- +
+-+
+-+
 -+#if 1
 -+	while (((SRAM_TEST_REG >> 20) & 1) == 0);
 -+#endif
-++		desc->sdl = MAX_MRU;
-++		if (i == (RX_DESCS - 1))
-++			desc->eor = 1;
-++		desc->fsd = 1;
-++		desc->lsd = 1;
- +
+-+
 -+	clear_fs_dma_state(1);
 -+	
 -+
@@ -3567,9 +3491,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		memcpy(priv->net_device_priv->arl_table_entry->mac, addr->sa_data, dev->addr_len);
 -+		//print_arl_table_entry(priv->net_device_priv->arl_table_entry);
 -+		cns3xxx_arl_table_add(priv->net_device_priv->arl_table_entry);
--+	}
+++	phys = dma_map_single(&dev->dev, skb->data, skb->len, DMA_TO_DEVICE);
+++	if (dma_mapping_error(&dev->dev, phys)) {
+++		dev_kfree_skb(skb);
+++		dev->stats.tx_dropped++;
+++		return NETDEV_TX_OK;
+ +	}
 -+        memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
--+
+++	tx_desc->sdp = phys;
+ +
 -+	spin_unlock_irq(&priv->lock);
 -+	return 0;
 -+}
@@ -3711,11 +3641,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			SARL_OQ_GTH_REG &= (~(0xff << ctl.tc*8));
 -+			SARL_OQ_GTH_REG |= (ctl.val << ctl.tc*8);
 -+			break;
-++		desc->sdp = dma_map_single(NULL, skb->data,
-++					    RX_BUFF_SIZE, DMA_FROM_DEVICE);
-++		if (dma_mapping_error(NULL, desc->sdp)) {
-++			return -EIO;
- +		}
+-+		}
 -+		case 1: // yellow
 -+		{
 -+			SARL_OQ_YTH_REG &= (~(0xff << ctl.tc*8));
@@ -3728,23 +3654,17 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			SARL_OQ_RTH_REG |= (ctl.val << ctl.tc*8);
 -+			break;
 -+		}
-++		desc->sdp += NET_IP_ALIGN;
-++		rx_ring->buff_tab[i] = skb;
-++		desc->cown = 0;
- +	}
+-+	}
 -+	return CAVM_OK;
 -+}
-++	__raw_writel(rx_ring->phys_addr, &sw->regs->fs_desc_ptr0);
-++	__raw_writel(rx_ring->phys_addr, &sw->regs->fs_desc_base_addr0);
- +
+-+
 -+int get_sarl_oq(struct ifreq *ifr)
 -+{
 -+	CNS3XXXSARLEntry ctl;
- +
+-+
 -+	if (copy_from_user(&ctl, ifr->ifr_data, sizeof(CNS3XXXSARLEntry)) )  
 -+		return -EFAULT; 
-++	spin_lock_init(&sw->tx_lock);
- +
+-+
 -+	switch (ctl.gyr)
 -+	{
 -+		case 0: // green
@@ -3763,26 +3683,16 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		}
 -+	}
-++	if (!(tx_dma_pool = dma_pool_create(DRV_NAME, NULL, TX_POOL_ALLOC_SIZE, 32, 0)))
-++		return -ENOMEM;
- +
+-+
 -+	if (copy_to_user(ifr->ifr_data, &ctl, sizeof(CNS3XXXSARLEntry)) )  
 -+		return -EFAULT; 
 -+	return CAVM_OK;
 -+}
-++	if (!(tx_ring->desc = dma_pool_alloc(tx_dma_pool, GFP_KERNEL,
-++					      &tx_ring->phys_addr)))
-++		return -ENOMEM;
-++	memset(tx_ring->desc, 0, TX_POOL_ALLOC_SIZE);
- +
+-+
 -+int set_queue_weight(struct ifreq *ifr)
 -+{
 -+	CNS3XXXQueueWeightEntry ctl;
-++	/* Setup TX buffers */
-++	for (i = 0; i < TX_DESCS; i++) {
-++		struct tx_desc *desc = &(tx_ring)->desc[i];
-++		tx_ring->buff_tab[i] = 0;
- +
+-+
 -+	if (copy_from_user(&ctl, ifr->ifr_data, sizeof(CNS3XXXQueueWeightEntry)) )  
 -+		return -EFAULT; 
 -+	switch (ctl.which_port)
@@ -3826,19 +3736,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		{
 -+			return -EFAULT;
 -+		}
-++		if (i == (TX_DESCS - 1))
-++			desc->eor = 1;
-++		desc->cown = 1;
- +	}
+-+	}
 -+}
-++	__raw_writel(tx_ring->phys_addr, &sw->regs->ts_desc_ptr0);
-++	__raw_writel(tx_ring->phys_addr, &sw->regs->ts_desc_base_addr0);
- +
+-+
 -+int get_queue_weight(struct ifreq *ifr)
 -+{
 -+	CNS3XXXQueueWeightEntry ctl;
-++	atomic_set(&tx_ring->num_used, 0);
- +
+-+
 -+	if (copy_from_user(&ctl, ifr->ifr_data, sizeof(CNS3XXXQueueWeightEntry)) )  
 -+		return -EFAULT; 
 -+
@@ -4478,7 +4382,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	return CAVM_OK;
 -+}
 -+
--+#if 0
+ +#if 0
 -+int get_rxring(struct ifreq *ifr)
 -+{
 -+	CNS3XXXRingStatus conf;
@@ -4512,13 +4416,12 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	conf.mib_len=i;
 -+	if (copy_to_user(ifr->ifr_data, &conf, sizeof(CNS3XXXMIBCounter)) )  
 -+		return -EFAULT; 
- +	return 0;
- +}
- +
+-+	return 0;
+-+}
+-+
 -+// reference e100.c
 -+int cns3xxx_do_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
-++static void destroy_rings(struct sw *sw)
- +{
+-+{
 -+	CNS3XXXIoctlCmd ioctl_cmd;
 -+
 -+	//printk("cns3xxx_do_ioctl begin\n");
@@ -4634,20 +4537,9 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+				}
 -+				default:
 -+					return -EFAULT;
-++	int i;
-++	if (sw->rx_ring->desc) {
-++		for (i = 0; i < RX_DESCS; i++) {
-++			struct _rx_ring *rx_ring = sw->rx_ring;
-++			struct rx_desc *desc = &(rx_ring)->desc[i];
-++			struct sk_buff *skb = sw->rx_ring->buff_tab[i];
-++			if (skb) {
-++				dma_unmap_single(NULL,
-++						 desc->sdp - NET_IP_ALIGN,
-++						 RX_BUFF_SIZE, DMA_FROM_DEVICE);
-++				dev_kfree_skb(skb);
- +			}
+-+			}
 -+
- +		}
+-+		}
 -+
 -+		case CNS3XXX_PORT_NEIGHBOR_GET:
 -+		{
@@ -4677,27 +4569,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+					ctl.type = ((VLAN_CFG >> 6 ) & 0x1);
 -+					break;
 -+				}
-++		dma_pool_free(rx_dma_pool, sw->rx_ring->desc, sw->rx_ring->phys_addr);
-++		dma_pool_destroy(rx_dma_pool);
-++		rx_dma_pool = 0;
-++		sw->rx_ring->desc = 0;
-++	}
-++	if (sw->tx_ring->desc) {
-++		for (i = 0; i < TX_DESCS; i++) {
-++			struct _tx_ring *tx_ring = sw->tx_ring;
-++			struct tx_desc *desc = &(tx_ring)->desc[i];
-++			struct sk_buff *skb = sw->tx_ring->buff_tab[i];
-++			if (skb) {
-++				dma_unmap_single(NULL, desc->sdp,
-++					skb->len, DMA_TO_DEVICE);
-++				dev_kfree_skb(skb);
- +			}
+-+			}
 -+
 -+			if (copy_to_user(ifr->ifr_data, &ctl, sizeof(CNS3XXXPortNeighborControl)) )  
 -+				return -EFAULT; 
 -+
 -+			return CAVM_OK;
- +		}
+-+		}
 -+
 -+		case CNS3XXX_VLAN_TABLE_LOOKUP:
 -+		{
@@ -5182,43 +5060,65 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		napi_complete(napi);
 -+#ifdef CNS3XXX_USE_MASK
 -+		cns3xxx_write_pri_mask(0xf0);
--+#else
+++	tx_desc->sdl = skb->len;
+++	tx_desc->fsd = 1;
+++	tx_desc->lsd = 1;
+++	tx_desc->fr = 1;
+ +#else
 -+	if (sp->ring_index == 0)
 -+		cns3xxx_enable_irq(FSRC_RING0_INTERRUPT_ID);
 -+	else
 -+		cns3xxx_enable_irq(FSRC_RING1_INTERRUPT_ID);
--+#endif
+++	tx_desc->config0 &= ~0xFFFF;
+++	tx_desc->config0 |= skb->len;
+++	tx_desc->config0 |= 0x34070000;
+ +#endif
 -+            return 0;
 -+        }
--+
+++	if (port->id == 3)
+++		tx_desc->pmap = (1 << 4);
+++	else
+++		tx_desc->pmap = (1 << port->id);
+ +
 -+	return 1;
 -+}
 -+#endif
--+
+++	wmb();
+++	tx_desc->cown = 0;
+++	atomic_inc(&tx_ring->num_used);
+++	dev->trans_start = jiffies;
+ +
 -+static struct net_device_stats *cns3xxx_get_stats(struct net_device *dev)
 -+{
 -+	CNS3XXXPrivate *priv = netdev_priv(dev);
 -+
 -+	return &priv->stats;
--+}
--+
+++	return NETDEV_TX_OK;
+ +}
+ +
 -+static int cns3xxx_change_mtu(struct net_device *dev, int new_mtu)
--+{
+++static int eth_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
+ +{
 -+	if (new_mtu < cns3xxx_min_mtu() || new_mtu > cns3xxx_max_mtu())
 -+		return -EINVAL;
--+
+++	struct port *port = netdev_priv(dev);
+ +
 -+	dev->mtu = new_mtu;
 -+
 -+	return 0;
--+}
--+
+++	if (!netif_running(dev))
+++		return -EINVAL;
+++	return phy_mii_ioctl(port->phydev, if_mii(req), cmd);
+ +}
+ +
 -+static void cns3xxx_timeout(struct net_device *dev)
 -+{
 -+	//star_gsw_enable(dev);
 -+	netif_wake_queue(dev);
 -+	dev->trans_start = jiffies;
 -+}
--+
+++/* ethtool support */
+ +
 -+#ifdef LINUX2631
 -+static const struct net_device_ops cns3xxx_netdev_ops = {
 -+        .ndo_open               = cns3xxx_open,
@@ -5245,7 +5145,9 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+#endif // LINUX2631
 -+
 -+static int __init cns3xxx_probe(RingInfo ring_info)
--+{
+++static void cns3xxx_get_drvinfo(struct net_device *dev,
+++			       struct ethtool_drvinfo *info)
+ +{
 -+	void cns3xxx_set_ethtool_ops(struct net_device *netdev);
 -+
 -+	int netdev_size = sizeof(net_device_prive)/sizeof(NetDevicePriv);
@@ -5354,32 +5256,43 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+err_alloc_etherdev:
 -+	return err;
--+}
--+
+++	strcpy(info->driver, DRV_NAME);
+++	strcpy(info->bus_info, "internal");
+ +}
+ +
 -+int cns3xxx_gsw_config_mac_port0(void)
--+{
+++static int cns3xxx_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
+ +{
 -+	INIT_PORT0_PHY
 -+	INIT_PORT0_MAC
 -+	PORT0_LINK_DOWN
 -+	return 0;
--+}
--+
+++	struct port *port = netdev_priv(dev);
+++	return phy_ethtool_gset(port->phydev, cmd);
+ +}
+ +
 -+int cns3xxx_gsw_config_mac_port1(void)
--+{
+++static int cns3xxx_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
+ +{
 -+	INIT_PORT1_PHY
 -+	INIT_PORT1_MAC
 -+	PORT1_LINK_DOWN
 -+	return 0;
--+}
--+
+++	struct port *port = netdev_priv(dev);
+++	return phy_ethtool_sset(port->phydev, cmd);
+ +}
+ +
 -+int cns3xxx_gsw_config_mac_port2(void)
--+{
+++static int cns3xxx_nway_reset(struct net_device *dev)
+ +{
 -+	INIT_PORT2_PHY
 -+	INIT_PORT2_MAC
 -+	PORT2_LINK_DOWN
 -+	return 0;
--+}
--+
+++	struct port *port = netdev_priv(dev);
+++	return phy_start_aneg(port->phydev);
+ +}
+ +
 -+static int cns3xxx_notify_reboot(struct notifier_block *nb, unsigned long event, void *ptr)
 -+{
 -+	// stop the DMA
@@ -5387,7 +5300,14 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	enable_tx_dma(0, 0);
 -+	enable_rx_dma(1, 0);
 -+	enable_tx_dma(1, 0);
--+
+++static struct ethtool_ops cns3xxx_ethtool_ops = {
+++	.get_drvinfo = cns3xxx_get_drvinfo,
+++	.get_settings = cns3xxx_get_settings,
+++	.set_settings = cns3xxx_set_settings,
+++	.nway_reset = cns3xxx_nway_reset,
+++	.get_link = ethtool_op_get_link,
+++};
+ +
 -+	// disable Port 0
 -+	enable_port(0, 0); 
 -+	enable_port(1, 0); 
@@ -5395,23 +5315,29 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	enable_port(3, 0); 
 -+	return NOTIFY_DONE;
 -+}
--+
+ +
 -+#ifdef CONFIG_CNS3XXX_NAPI
 -+static struct net_device *init_napi_dev(struct net_device *ndev, const RingInfo *ring_info)
--+{
+++static int init_rings(struct sw *sw)
+ +{
 -+	CNS3XXXPrivate *priv;
--+
+++	int i;
+++	struct _rx_ring *rx_ring = sw->rx_ring;
+++	struct _tx_ring *tx_ring = sw->tx_ring;
+ +
 -+	ndev = alloc_etherdev(sizeof(CNS3XXXPrivate));
 -+	if (!ndev) {
 -+		BUG();
-++		dma_pool_free(tx_dma_pool, sw->tx_ring->desc, sw->tx_ring->phys_addr);
-++		dma_pool_destroy(tx_dma_pool);
-++		tx_dma_pool = 0;
-++		sw->tx_ring->desc = 0;
- +	}
+-+	}
 -+	priv = netdev_priv(ndev);
 -+	memset(priv, 0, sizeof(CNS3XXXPrivate));
--+
+++	__raw_writel(0x0, &sw->regs->fs_dma_ctrl0);
+++	__raw_writel(0x0, &sw->regs->dma_auto_poll_cfg);
+++	__raw_writel(0x00000FF0, &sw->regs->dma_ring_ctrl);
+++	__raw_writel(0x80000FF0, &sw->regs->dma_ring_ctrl);
+++	while ((__raw_readl(&sw->regs->dma_ring_ctrl) & 0x40000000) == 0);
+++	__raw_writel(0x00000FF0, &sw->regs->dma_ring_ctrl);
+ +
 -+	//priv = netdev_priv(napi_dev);
 -+	priv->num_rx_queues = ring_info->num_rx_queues;
 -+	priv->num_tx_queues = ring_info->num_tx_queues;
@@ -5424,62 +5350,40 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	set_bit(__LINK_STATE_START, &ndev->state);
 -+
 -+	return ndev;
- +}
+-+}
 -+#endif
- +
+-+
 -+
 -+void cns3xxx_config_intr(void)
-++static int eth_open(struct net_device *dev)
- +{
+-+{
 -+	u32 v=0xffffffff;
-++	struct port *port = netdev_priv(dev);
-++	struct sw *sw = port->sw;
-++	u32 temp;
- +
+-+
 -+	get_interrupt_type(FSRC_RING0_INTERRUPT_ID, &v);
 -+#if 1
 -+	set_interrupt_type(FSRC_RING0_INTERRUPT_ID, RISING_EDGE);
 -+	get_interrupt_type(FSRC_RING0_INTERRUPT_ID, &v);
-++	port->speed = 0;	/* force "link up" message */
-++	phy_start(port->phydev);
- +
+-+
 -+	get_interrupt_type(FSRC_RING1_INTERRUPT_ID, &v);
 -+	set_interrupt_type(FSRC_RING1_INTERRUPT_ID, RISING_EDGE);
 -+	get_interrupt_type(FSRC_RING1_INTERRUPT_ID, &v);
-++	netif_start_queue(dev);
- +
+-+
 -+	get_interrupt_type(FSQF_RING0_INTERRUPT_ID, &v);
 -+	set_interrupt_type(FSQF_RING0_INTERRUPT_ID, RISING_EDGE);
 -+	get_interrupt_type(FSQF_RING0_INTERRUPT_ID, &v);
-++	temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
-++	temp &= ~(PORT_DISABLE);
-++	__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
- +
+-+
 -+	get_interrupt_type(FSQF_RING1_INTERRUPT_ID, &v);
 -+	set_interrupt_type(FSQF_RING1_INTERRUPT_ID, RISING_EDGE);
 -+	get_interrupt_type(FSQF_RING1_INTERRUPT_ID, &v);
-++	if (!ports_open) {
-++		temp = __raw_readl(&sw->regs->mac_cfg[2]);
-++		temp &= ~(PORT_DISABLE);
-++		__raw_writel(temp, &sw->regs->mac_cfg[2]);
- +
+-+
 -+	#ifdef CNS3XXX_USE_MASK
 -+		get_interrupt_pri(FSRC_RING0_INTERRUPT_ID, &v);
 -+		set_interrupt_pri(FSRC_RING0_INTERRUPT_ID, 0xc);
 -+		get_interrupt_pri(FSRC_RING0_INTERRUPT_ID, &v);
-++		temp = __raw_readl(&sw->regs->dma_auto_poll_cfg);
-++		temp &= ~(0x11);
-++		__raw_writel(temp, &sw->regs->dma_auto_poll_cfg);
- +
+-+
 -+		get_interrupt_pri(FSRC_RING1_INTERRUPT_ID, &v);
 -+		set_interrupt_pri(FSRC_RING1_INTERRUPT_ID, 0xc);
 -+		get_interrupt_pri(FSRC_RING1_INTERRUPT_ID, &v);
-++		request_irq(IRQ_CNS3XXX_SW_R0RXC, eth_rx_irq, IRQF_SHARED, "gig_switch", napi_dev);
-++		napi_enable(&sw->napi);
-++		netif_start_queue(napi_dev);
-++		disable_irq(IRQ_CNS3XXX_SW_R0RXC);
-++		napi_schedule(&sw->napi);
- +
+-+
 -+		get_interrupt_pri(FSQF_RING1_INTERRUPT_ID, &v);
 -+		set_interrupt_pri(FSQF_RING1_INTERRUPT_ID, 0xc);
 -+		get_interrupt_pri(FSQF_RING1_INTERRUPT_ID, &v);
@@ -5524,27 +5428,39 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+	ring_info.rx_ring = kcalloc(ring_info.num_rx_queues, sizeof(RXRing), GFP_KERNEL);
 -+	if (!ring_info.rx_ring)
--+		return -ENOMEM;
+++	if (!(rx_dma_pool = dma_pool_create(DRV_NAME, NULL, RX_POOL_ALLOC_SIZE, 32, 0)))
+ +		return -ENOMEM;
 -+	
 -+	for (i=0 ; i < ring_info.num_rx_queues ; ++i) {
 -+		memset(ring_info.rx_ring + i, 0, sizeof(RXRing));
-++		__raw_writel((TS_POLL_EN | FS_POLL_EN), &sw->regs->dma_auto_poll_cfg);
- +	}
-++	ports_open++;
-++	netif_carrier_on(dev);
+-+	}
  +
 -+
 -+	ring_info.tx_ring = kcalloc(ring_info.num_tx_queues, sizeof(TXRing), GFP_KERNEL);
 -+
 -+
 -+	if (!ring_info.tx_ring)
--+		return -ENOMEM;
--+
+++	if (!(rx_ring->desc = dma_pool_alloc(rx_dma_pool, GFP_KERNEL,
+++					      &rx_ring->phys_addr)))
+ +		return -ENOMEM;
+++	memset(rx_ring->desc, 0, RX_POOL_ALLOC_SIZE);
+ +
 -+	for (i=0 ; i < ring_info.num_tx_queues ; ++i) {
 -+		memset(ring_info.tx_ring + i, 0, sizeof(TXRing));
 -+	}
--+
--+
+++	/* Setup RX buffers */
+++	for (i = 0; i < RX_DESCS; i++) {
+++		struct rx_desc *desc = &(rx_ring)->desc[i];
+++		struct sk_buff *skb;
+++		if (!(skb = dev_alloc_skb(RX_BUFF_SIZE)))
+++			return -ENOMEM;
+ +
+++		desc->sdl = MAX_MRU;
+++		if (i == (RX_DESCS - 1))
+++			desc->eor = 1;
+++		desc->fsd = 1;
+++		desc->lsd = 1;
+ +
 -+	g_ring_info = ring_info;
 -+
 -+	cns3xxx_gsw_hw_init();
@@ -5609,47 +5525,34 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	}
 -+
 -+
- +	return 0;
- +}
- +
+-+	return 0;
+-+}
+-+
 -+static int __devexit cns3xxx_remove(struct platform_device *pdev)
-++static int eth_close(struct net_device *dev)
- +{
+-+{
 -+	int i=0;
-++	struct port *port = netdev_priv(dev);
-++	struct sw *sw = port->sw;
-++	u32 temp;
- +
+-+
 -+#if 1
 -+	for (i=0 ; i < NETDEV_SIZE ; ++i) {
 -+		CNS3XXXPrivate *priv = 0;
-++	ports_open--;
- +
+-+
 -+		if (net_dev_array[i]){
 -+			priv = netdev_priv(net_dev_array[i]);
-++	temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
-++	temp |= (PORT_DISABLE);
-++	__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
- +
+-+
 -+			kfree(priv->tx_ring);
 -+			priv->tx_ring = 0;
-++	netif_stop_queue(dev);
- +
+-+
 -+			kfree(priv->rx_ring);
 -+			priv->rx_ring = 0;
-++	phy_stop(port->phydev);
- +
+-+
 -+			unregister_netdev(net_dev_array[i]);
 -+			free_netdev(net_dev_array[i]);
--+		}
-++	if (!ports_open) {
-++		free_irq(IRQ_CNS3XXX_SW_R0RXC, napi_dev);
-++		napi_disable(&sw->napi);
-++		netif_stop_queue(napi_dev);
-++		temp = __raw_readl(&sw->regs->mac_cfg[2]);
-++		temp |= (PORT_DISABLE);
-++		__raw_writel(temp, &sw->regs->mac_cfg[2]);
- +
+++		desc->sdp = dma_map_single(NULL, skb->data,
+++					    RX_BUFF_SIZE, DMA_FROM_DEVICE);
+++		if (dma_mapping_error(NULL, desc->sdp)) {
+++			return -EIO;
+ +		}
+-+
 -+
 -+#if 0
 -+		sprintf(netdev_name, "eth%d", i);
@@ -5663,11 +5566,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		}
 -+#endif
 -+		#endif
-++		temp = __raw_readl(&sw->regs->dma_auto_poll_cfg);
-++		temp |= 0x11;
-++		__raw_writel(temp, &sw->regs->dma_auto_poll_cfg);
+++		desc->sdp += NET_IP_ALIGN;
+++		rx_ring->buff_tab[i] = skb;
+++		desc->cown = 0;
  +	}
 -+#endif
+++	__raw_writel(rx_ring->phys_addr, &sw->regs->fs_desc_ptr0);
+++	__raw_writel(rx_ring->phys_addr, &sw->regs->fs_desc_base_addr0);
  +
 -+#ifdef CONFIG_CNS3XXX_NAPI
 -+	free_netdev(napi_dev);
@@ -5675,22 +5580,33 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	free_netdev(r1_napi_dev);
 -+	#endif
 -+#endif
--+
--+
+ +
+++	spin_lock_init(&sw->tx_lock);
+ +
 -+#if 0
 -+	//star_gsw_buffer_free(); 
 -+#endif
 -+	unregister_reboot_notifier(&cns3xxx_notifier_reboot);
 -+}
--+
--+
+++	if (!(tx_dma_pool = dma_pool_create(DRV_NAME, NULL, TX_POOL_ALLOC_SIZE, 32, 0)))
+++		return -ENOMEM;
+ +
+++	if (!(tx_ring->desc = dma_pool_alloc(tx_dma_pool, GFP_KERNEL,
+++					      &tx_ring->phys_addr)))
+++		return -ENOMEM;
+++	memset(tx_ring->desc, 0, TX_POOL_ALLOC_SIZE);
+ +
 -+// this snippet code ref 8139cp.c
 -+#if defined(CNS3XXX_VLAN_8021Q)
 -+void cns3xxx_vlan_rx_register(struct net_device *dev, struct vlan_group *grp)
 -+{
 -+        CNS3XXXPrivate *priv = netdev_priv(dev);
 -+        unsigned long flags;
--+
+++	/* Setup TX buffers */
+++	for (i = 0; i < TX_DESCS; i++) {
+++		struct tx_desc *desc = &(tx_ring)->desc[i];
+++		tx_ring->buff_tab[i] = 0;
+ +
 -+        spin_lock_irqsave(&priv->lock, flags);
 -+        priv->vlgrp = grp;
 -+        spin_unlock_irqrestore(&priv->lock, flags);
@@ -5809,11 +5725,17 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			(en==1)?(PHY_AUTO_ADDR_REG |= (1 << 23)) :(PHY_AUTO_ADDR_REG &= (~(1 << 23)) );
 -+			break;
 -+		}
--+	}
--+
+++		if (i == (TX_DESCS - 1))
+++			desc->eor = 1;
+++		desc->cown = 1;
+ +	}
+++	__raw_writel(tx_ring->phys_addr, &sw->regs->ts_desc_ptr0);
+++	__raw_writel(tx_ring->phys_addr, &sw->regs->ts_desc_base_addr0);
+ +
 -+	return CAVM_OK;
 -+}
--+
+++	atomic_set(&tx_ring->num_used, 0);
+ +
 -+// dis: 1 disable
 -+// dis: 0 enable
 -+int cns3xxx_phy_auto_polling_enable(u8 port, u8 en)
@@ -6150,31 +6072,26 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		buf[i] = (u8)dumy_word;
 -+	}
 -+	
-++	netif_carrier_off(dev);
  +	return 0;
 -+
  +}
  +
 -+int bcm53115M_reg_write(int page, int offset, u8 *buf, int len)
-++static void eth_rx_mode(struct net_device *dev)
+++static void destroy_rings(struct sw *sw)
  +{
 -+	u32 ch = BCM53115_SPI_CHANNEL;
 -+	u8 cmd_byte;
 -+	u32 dumy_word;
 -+	u32 spi_status;
--+	int i;
-++	struct port *port = netdev_priv(dev);
-++	struct sw *sw = port->sw;
-++	u32 temp;
- +
+ +	int i;
+-+
 -+	/*
 -+	 * Normal SPI Mode (Command Byte)
 -+	 * Bit7		Bit6		Bit5		Bit4		Bit3		Bit2		Bit1		Bit0
 -+	 * 0		1			1			Mode=0		CHIP_ID2	ID1			ID0(lsb)	Rd/Wr(0/1)	
 -+	 *
 -+	 */
-++	temp = __raw_readl(&sw->regs->mac_glob_cfg);
- +
+-+
 -+	/* Normal Write Operation */
 -+	/* 1. Issue a normal read command(0x60) to poll the SPIF bit in the 
 -+	      SPI status register(0XFE) to determine the operation can start */
@@ -6202,56 +6119,26 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	// write content
 -+	for (i=0; i<len; i++) {
 -+		cns3xxx_spi_tx_rx_n((u32)buf[i], &dumy_word, ch, ((i==(len-1)) ? 1 : 0));
-++	if (dev->flags & IFF_PROMISC) {
-++		if (port->id == 3)
-++			temp |= (1 << 2);
-++		else
-++			temp |= (1 << port->id);
-++	} else {
-++		if (port->id == 3)
-++			temp &= ~(1 << 2);
-++		else
-++			temp &= ~(1 << port->id);
- +	}
+-+	}
 -+
 -+	return 0;
-++	__raw_writel(temp, &sw->regs->mac_glob_cfg);
- +}
- +
+-+}
+-+
 -+int __init_or_module gpio_direction_output(unsigned int pin, unsigned int state);
 -+
 -+void bcm53115M_init_mac(u8 mac_port, u16 phy_addr)
-++static int eth_set_mac(struct net_device *netdev, void *p)
- +{
+-+{
 -+	u32 mac_port_config = 0;
 -+	u8 mac_addr[]={0x0c, 0x10, 0x18};
-++  struct port *port = netdev_priv(netdev);
-++	struct sw *sw = port->sw;
-++  struct sockaddr *addr = p;
-++	u32 cycles = 0;
- +
+-+
 -+	cns3xxx_enable_mac_clock(mac_port, 1);
 -+	cns3xxx_phy_auto_polling_enable(mac_port, 0);
-++  if (!is_valid_ether_addr(addr->sa_data))
-++    return -EADDRNOTAVAIL;
- +
+-+
 -+	mac_port_config = SWITCH_REG_VALUE(mac_addr[mac_port]);
-++	/* Invalidate old ARL Entry */
-++	if (port->id == 3)
-++		__raw_writel((port->id << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
-++	else
-++		__raw_writel(((port->id + 1) << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
-++	__raw_writel( ((netdev->dev_addr[0] << 24) | (netdev->dev_addr[1] << 16) |
-++			(netdev->dev_addr[2] << 8) | (netdev->dev_addr[3])),
-++			&sw->regs->arl_ctrl[1]);
- +
+-+
 -+	// enable GMII, MII, reverse MII
 -+	mac_port_config &= (~(1 << 15));
-++	__raw_writel( ((netdev->dev_addr[4] << 24) | (netdev->dev_addr[5] << 16) |
-++			(1 << 1)),
-++			&sw->regs->arl_ctrl[2]);
-++	__raw_writel((1 << 19), &sw->regs->arl_vlan_cmd);
- +
+-+
 -+	// enable RGMII
 -+	mac_port_config |= (1 << 15);
 -+
@@ -6320,16 +6207,11 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	while(1) {
 -+		bcm53115M_reg_read(0x05, 0x80, (u8*)&bval, 1);	
 -+		if (((bval >> VLAN_START_BIT) & 1) == 0) break;
-++	while (((__raw_readl(&sw->regs->arl_vlan_cmd) & (1 << 21)) == 0)
-++			&& cycles < 5000) {
-++		udelay(1);
-++		cycles++;
- +	}
- +
+-+	}
+-+
 -+	return CAVM_OK;
 -+}
-++	cycles = 0;
- +
+-+
 -+typedef struct bcm_port_cfg_t
 -+{
 -+	u8 link;
@@ -6339,20 +6221,9 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	u8 tx_flw_ctrl;
 -+	u8 ow;
 -+}bcm_port_cfg;
-++  memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
- +
-++	if (port->id == 3)
-++		__raw_writel((port->id << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
-++	else
-++		__raw_writel(((port->id + 1) << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
-++	__raw_writel( ((addr->sa_data[0] << 24) | (addr->sa_data[1] << 16) |
-++			(addr->sa_data[2] << 8) | (addr->sa_data[3])),
-++			&sw->regs->arl_ctrl[1]);
- +
-++	__raw_writel( ((addr->sa_data[4] << 24) | (addr->sa_data[5] << 16) |
-++			(7 << 4) | (1 << 1)), &sw->regs->arl_ctrl[2]);
-++	__raw_writel((1 << 19), &sw->regs->arl_vlan_cmd);
- +
+-+
+-+
+-+
 -+int bcm53115M_mac_port_config(int port, bcm_port_cfg *cfg)
 -+{
 -+	u8 bval = 0;
@@ -6371,32 +6242,18 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	}else {
 -+		page = 0x00;
 -+		addr = 0x58+port;
-++	while (((__raw_readl(&sw->regs->arl_vlan_cmd) & (1 << 21)) == 0)
-++		&& cycles < 5000) {
-++		udelay(1);
-++		cycles++;
- +	}
- +
+-+	}
+-+
 -+	bcm53115M_reg_write(page, addr, &bval, 1);
 -+
- +	return 0;
- +}
- +
+-+	return 0;
+-+}
+-+
 -+int bcm53115M_init_internal_phy(void)
 -+{
 -+	int p, page;
 -+	u16 wval;
-++static const struct net_device_ops cns3xxx_netdev_ops = {
-++	.ndo_open = eth_open,
-++	.ndo_stop = eth_close,
-++	.ndo_start_xmit = eth_xmit,
-++	.ndo_set_rx_mode = eth_rx_mode,
-++	.ndo_do_ioctl = eth_ioctl,
-++	.ndo_change_mtu = eth_change_mtu,
-++	.ndo_set_mac_address = eth_set_mac,
-++	.ndo_validate_addr = eth_validate_addr,
-++};
- +
+-+
 -+	for (p=BCM_PORT_0; p<=BCM_PORT_4; p++) {
 -+		page = 0x10+p;
 -+		
@@ -6425,36 +6282,23 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+}
 -+
 -+int bcm53115M_led_init(void)
-++static int __devinit eth_init_one(struct platform_device *pdev)
- +{
+-+{
 -+	u16 led_func, bval, wval; 
 -+		
 -+	/* LED function 1G/ACT, 100M/ACT, 10M/ACT, not used */
 -+	led_func = 0x2C00;
 -+	bcm53115M_reg_write(0x00, 0x10, (u8*)&led_func, 2);
 -+	bcm53115M_reg_write(0x00, 0x12, (u8*)&led_func, 2);
-++	int i;
-++	struct port *port;
-++	struct sw *sw;
-++	struct net_device *dev;
-++	struct cns3xxx_plat_info *plat = pdev->dev.platform_data;
-++	u32 regs_phys;
-++	char phy_id[MII_BUS_ID_SIZE + 3];
-++	int err;
-++	u32 temp;
- +
+-+
 -+	/* LED map enable */
 -+	wval = 0x1F; // port0~4
 -+	bcm53115M_reg_write(0x00, 0x16, (u8*)&wval, 2);
- +
+-+
 -+	/* LED mode map */
 -+	wval = 0x1F; // led auto mode
 -+	bcm53115M_reg_write(0x00, 0x18, (u8*)&wval, 2);
 -+	bcm53115M_reg_write(0x00, 0x1A, (u8*)&wval, 2);
-++	if (!(napi_dev = alloc_etherdev(sizeof(struct sw))))
-++		return -ENOMEM;
-++	strcpy(napi_dev->name, "switch%d");
- +
+-+
 -+	/* LED enable */
 -+	bcm53115M_reg_read(0x00, 0x0F, (u8*)&bval, 1);
 -+	bval |= 0x80;
@@ -6492,30 +6336,18 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	if (u32_val != 0x53115) {
 -+		printk("bad device id(0x%x)\r\n", u32_val);
 -+		return -1;
-++	SET_NETDEV_DEV(napi_dev, &pdev->dev);
-++	sw = netdev_priv(napi_dev);
-++	memset(sw, 0, sizeof(struct sw));
-++	sw->regs = (struct switch_regs __iomem *)CNS3XXX_SWITCH_BASE_VIRT;
-++	regs_phys = CNS3XXX_SWITCH_BASE;
-++	sw->mem_res = request_mem_region(regs_phys, REGS_SIZE, napi_dev->name);
-++	if (!sw->mem_res) {
-++		err = -EBUSY;
-++		goto err_free;
- +	}
- +
+-+	}
+-+
 -+	u16_val=0;
 -+	// read phy id
 -+	bcm53115M_reg_read(0x10, 0x04, (u8 *)&u16_val, 2);
 -+	printk("bcm53115M phy id_1:(0x%x)\r\n", u16_val);
-++	temp = 0x80000000;
-++	temp |= (PORT_DISABLE);
-++	__raw_writel(temp, &sw->regs->mac_cfg[2]);
- +
+-+
 -+	if (u16_val != 0x143) {
 -+		printk("bad phy id1(0x%x)\r\n", u16_val);
 -+		return CAVM_ERR;
 -+	}
- +
+-+
 -+	u16_val=0;
 -+	// read phy id2
 -+	bcm53115M_reg_read(0x10, 0x06, (u8 *)&u16_val, 2);
@@ -6873,7 +6705,18 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		{
 -+	        	mac_port_config = MAC0_CFG_REG;
 -+			break;
--+		}
+++	if (sw->rx_ring->desc) {
+++		for (i = 0; i < RX_DESCS; i++) {
+++			struct _rx_ring *rx_ring = sw->rx_ring;
+++			struct rx_desc *desc = &(rx_ring)->desc[i];
+++			struct sk_buff *skb = sw->rx_ring->buff_tab[i];
+++			if (skb) {
+++				dma_unmap_single(NULL,
+++						 desc->sdp - NET_IP_ALIGN,
+++						 RX_BUFF_SIZE, DMA_FROM_DEVICE);
+++				dev_kfree_skb(skb);
+++			}
+ +		}
 -+		case 1:
 -+		{
 -+	        	mac_port_config = MAC1_CFG_REG;
@@ -6884,12 +6727,12 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	        	mac_port_config = MAC2_CFG_REG;
 -+			break;
 -+		}
-++	if (!(sw->rx_ring = kmalloc(sizeof(struct _rx_ring), GFP_KERNEL))) {
-++		err = -ENOMEM;
-++		goto err_free;
+++		dma_pool_free(rx_dma_pool, sw->rx_ring->desc, sw->rx_ring->phys_addr);
+++		dma_pool_destroy(rx_dma_pool);
+++		rx_dma_pool = 0;
+++		sw->rx_ring->desc = 0;
  +	}
-++	memset(sw->rx_ring, 0, sizeof(struct _rx_ring));
- +
+-+
 -+	// enable GMII, MII, reverse MII
 -+	mac_port_config &= (~(1 << 15));
 -+
@@ -6939,12 +6782,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			MAC2_CFG_REG = mac_port_config;
 -+			break;
 -+		}
-++	if (!(sw->tx_ring = kmalloc(sizeof(struct _tx_ring), GFP_KERNEL))) {
-++		err = -ENOMEM;
-++		goto err_free_rx;
- +	}
-++	memset(sw->tx_ring, 0, sizeof(struct _tx_ring));
- +
+-+	}
+-+
 -+
 -+	return CAVM_OK;
 -+}
@@ -6961,24 +6800,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	if (phy_data != 0x0243) {
 -+		printk("ICPLUS 101A phy id should be 0x243, but the phy id is : %x\n", phy_data);
 -+		return CAVM_ERR;
-++	if ((err = init_rings(sw)) != 0) {
-++		destroy_rings(sw);
-++		err = -ENOMEM;
-++		goto err_free_rings;
- +	}
+-+	}
 -+	printk("phy id : %x\n", phy_data);
 -+	printk("init IC+101A\n");
-++	platform_set_drvdata(pdev, napi_dev);
- +
+-+
 -+	icp_101a_init_mac(mac_port, phy_addr);
-++	netif_napi_add(napi_dev, &sw->napi, eth_poll, NAPI_WEIGHT);
- +
+-+
 -+	// read advertisement register
 -+	cns3xxx_read_phy(phy_addr, 0x4, &phy_data);
-++	for (i = 0; i < 3; i++) {
-++		if (!(plat->ports & (1 << i)))
-++			continue;
- +
+-+
 -+	// enable PAUSE frame capability
 -+	phy_data |= (0x1 << 10);
 -+
@@ -6992,9 +6822,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		{
 -+	        	mac_port_config = MAC0_CFG_REG;
 -+			break;
-++		if (!(dev = alloc_etherdev(sizeof(struct port)))) {
-++			goto free_ports;
- +		}
+-+		}
 -+		case 1:
 -+		{
 -+	        	mac_port_config = MAC1_CFG_REG;
@@ -7006,7 +6834,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		}
 -+	}
- +
+-+
 -+#if 0
 -+	if (!(mac_port_config & (0x1 << 5))) {
 -+		if (cns3xxx_read_phy (port, PHY_AN_ADVERTISEMENT_REG_ADDR, &phy_data) == CAVM_ERR)
@@ -7014,40 +6842,33 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			//PDEBUG("\n PORT%d, enable local flow control capability Fail\n", port);
 -+			return CAVM_ERR;
 -+	    	}
-++		//SET_NETDEV_DEV(dev, &pdev->dev);
-++		port = netdev_priv(dev);
-++		port->netdev = dev;
-++		if (i == 2)
-++			port->id = 3;
- +		else
+-+		else
 -+	    	{
 -+	      		// enable PAUSE frame capability
 -+			phy_data |= (0x1 << 10);
-++			port->id = i;
-++		port->sw = sw;
- +
+-+
 -+	      		if (cns3xxx_write_phy (port, PHY_AN_ADVERTISEMENT_REG_ADDR, phy_data) == CAVM_ERR)
 -+			{
 -+				//PDEBUG("\nPORT%d, enable PAUSE frame capability Fail\n", port);
 -+				return CAVM_ERR;
--+			}
+++	if (sw->tx_ring->desc) {
+++		for (i = 0; i < TX_DESCS; i++) {
+++			struct _tx_ring *tx_ring = sw->tx_ring;
+++			struct tx_desc *desc = &(tx_ring)->desc[i];
+++			struct sk_buff *skb = sw->tx_ring->buff_tab[i];
+++			if (skb) {
+++				dma_unmap_single(NULL, desc->sdp,
+++					skb->len, DMA_TO_DEVICE);
+++				dev_kfree_skb(skb);
+ +			}
 -+	    	}
 -+	}
 -+#endif
-++		temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
-++		temp |= (PORT_DISABLE);
-++		__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
- +
+-+
 -+	cns3xxx_read_phy(phy_addr, 0, &phy_data);
 -+	// an enable
 -+	phy_data |= (0x1 << 12); 
-++		dev->netdev_ops = &cns3xxx_netdev_ops;
-++		dev->ethtool_ops = &cns3xxx_ethtool_ops;
-++		dev->tx_queue_len = 1000;
-++		dev->features |= NETIF_F_IP_CSUM;
-++		switch_port_tab[i] = port;
-++		memcpy(dev->dev_addr, &plat->hwaddr[i], ETH_ALEN);
- +
+-+
 -+	// restart AN
 -+	phy_data |= (0x1 << 9); 
 -+	cns3xxx_write_phy(phy_addr, 0, phy_data);
@@ -7062,38 +6883,33 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		} else {
 -+			//PDEBUG ("\n PHY%d AN restart is complete \n", port);
 -+			break;
-++		snprintf(phy_id, MII_BUS_ID_SIZE + 3, PHY_ID_FMT, "0", plat->phy[i]);
-++		port->phydev = phy_connect(dev, phy_id, &cns3xxx_adjust_link, 0,
-++			PHY_INTERFACE_MODE_RGMII);
-++		if ((err = IS_ERR(port->phydev))) {
-++			switch_port_tab[i] = 0;
-++			free_netdev(dev);
-++			goto free_ports;
  +		}
--+	}
- +
+++		dma_pool_free(tx_dma_pool, sw->tx_ring->desc, sw->tx_ring->phys_addr);
+++		dma_pool_destroy(tx_dma_pool);
+++		tx_dma_pool = 0;
+++		sw->tx_ring->desc = 0;
+ +	}
+-+
 -+#endif
-++		port->phydev->irq = PHY_POLL;
- +
+-+
 -+	return CAVM_OK;
--+}
--+
+ +}
+ +
 -+int cns3xxx_config_VSC8601_mac(u8 port)
--+{
+++static int eth_open(struct net_device *dev)
+ +{
 -+	u32 mac_port_config = 0;
--+
+++	struct port *port = netdev_priv(dev);
+++	struct sw *sw = port->sw;
+++	u32 temp;
+ +
 -+	switch (port)
 -+	{
 -+		case 0:
 -+		{
 -+	        	mac_port_config = MAC0_CFG_REG;
 -+			break;
-++		if ((err = register_netdev(dev))) {
-++			phy_disconnect(port->phydev);
-++			switch_port_tab[i] = 0;
-++			free_netdev(dev);
-++			goto free_ports;
- +		}
+-+		}
 -+		case 1:
 -+		{
 -+	        	mac_port_config = MAC1_CFG_REG;
@@ -7105,6 +6921,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		}
 -+	}
+++	port->speed = 0;	/* force "link up" message */
+++	phy_start(port->phydev);
  +
 -+	switch (port)
 -+	{
@@ -7123,29 +6941,42 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			MAC2_CFG_REG = mac_port_config;
 -+			break;
 -+		}
-++		printk(KERN_INFO "%s: RGMII PHY %i on cns3xxx Switch\n", dev->name, plat->phy[i]);
-++		netif_carrier_off(dev);
-++		dev = 0;
- +	}
+-+	}
 -+	return CAVM_OK;
 -+}
+++	netif_start_queue(dev);
  +
 -+u16 get_phy_id(u8 phy_addr)
 -+{
 -+	u16 read_data;
--+
+++	temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
+++	temp &= ~(PORT_DISABLE);
+++	__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
+ +
 -+	cns3xxx_read_phy(phy_addr, 2, &read_data);
--+
+++	if (!ports_open) {
+++		temp = __raw_readl(&sw->regs->mac_cfg[2]);
+++		temp &= ~(PORT_DISABLE);
+++		__raw_writel(temp, &sw->regs->mac_cfg[2]);
+ +
 -+	return read_data;
 -+}
--+
+++		temp = __raw_readl(&sw->regs->dma_auto_poll_cfg);
+++		temp &= ~(0x11);
+++		__raw_writel(temp, &sw->regs->dma_auto_poll_cfg);
+ +
 -+u32 get_vsc8601_recv_err_counter(u8 phy_addr)
 -+{
 -+	u16 read_data=0;
 -+	cns3xxx_read_phy(phy_addr, 19, &read_data);
 -+	return read_data;
 -+}
--+
+++		request_irq(IRQ_CNS3XXX_SW_R0RXC, eth_rx_irq, IRQF_SHARED, "gig_switch", napi_dev);
+++		napi_enable(&sw->napi);
+++		netif_start_queue(napi_dev);
+++		disable_irq(IRQ_CNS3XXX_SW_R0RXC);
+++		napi_schedule(&sw->napi);
+ +
 -+u32 get_crc_good_counter(u8 phy_addr)
 -+{
 -+	u16 read_data=0;
@@ -7179,8 +7010,11 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	phy_id = get_phy_id(phy_addr);
 -+	if (phy_id != 0x143) {
 -+		return CAVM_ERR;
--+	}
--+
+++		__raw_writel((TS_POLL_EN | FS_POLL_EN), &sw->regs->dma_auto_poll_cfg);
+ +	}
+++	ports_open++;
+++	netif_carrier_on(dev);
+ +
 -+	switch (mac_port)
 -+	{
 -+		case 0:
@@ -7562,17 +7396,21 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+        return -1;
 -+    }
  +	return 0;
--+}
+ +}
 -+#endif
  +
 -+#if 0
 -+static int star_gsw_config_VSC8201(u8 mac_port, u8 phy_addr)	// include cicada 8201
--+{
+++static int eth_close(struct net_device *dev)
+ +{
 -+	//u32 mac_port_base = 0;
 -+	u32 mac_port_config=0;
 -+	u16 phy_reg;
 -+	int i;
--+
+++	struct port *port = netdev_priv(dev);
+++	struct sw *sw = port->sw;
+++	u32 temp;
+ +
 -+	printk("\nconfigure VSC8201\n");
 -+	//PDEBUG("mac port : %d phy addr : %d\n", mac_port, phy_addr);
 -+	/*
@@ -7587,30 +7425,46 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		//PDEBUG("port 1\n");
 -+		mac_port_config = GSW_MAC_PORT_1_CONFIG_REG;
 -+	}
--+
+++	ports_open--;
+ +
 -+	star_gsw_set_phy_addr(mac_port, phy_addr);
 -+	//star_gsw_set_phy_addr(1, 1);
--+
+++	temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
+++	temp |= (PORT_DISABLE);
+++	__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
+ +
 -+	//mac_port_config = __REG(mac_port_base);
--+
+++	netif_stop_queue(dev);
+ +
 -+	// enable PHY's AN
 -+	mac_port_config |= (0x1 << 7);
--+
+++	phy_stop(port->phydev);
+ +
 -+	// enable RGMII-PHY mode
 -+	mac_port_config |= (0x1 << 15);
--+
+++	if (!ports_open) {
+++		free_irq(IRQ_CNS3XXX_SW_R0RXC, napi_dev);
+++		napi_disable(&sw->napi);
+++		netif_stop_queue(napi_dev);
+++		temp = __raw_readl(&sw->regs->mac_cfg[2]);
+++		temp |= (PORT_DISABLE);
+++		__raw_writel(temp, &sw->regs->mac_cfg[2]);
+ +
 -+	// enable GSW MAC port 0
 -+	mac_port_config &= ~(0x1 << 18);
 -+
 -+	if (mac_port == 0) {
 -+		//PDEBUG("port 0\n");
 -+		GSW_MAC_PORT_0_CONFIG_REG = mac_port_config;
--+	}
+++		temp = __raw_readl(&sw->regs->dma_auto_poll_cfg);
+++		temp |= 0x11;
+++		__raw_writel(temp, &sw->regs->dma_auto_poll_cfg);
+ +	}
 -+	if (mac_port == 1) {
 -+		//PDEBUG("port 1\n");
 -+		GSW_MAC_PORT_1_CONFIG_REG = mac_port_config;
 -+	}
--+
+ +
 -+	/*
 -+	 * Configure Cicada's CIS8201 single PHY
 -+	 */
@@ -7696,18 +7550,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		} else {
 -+			udelay(100);
-++free_ports:
-++	err = -ENOMEM;
-++	for (--i; i >= 0; i--) {
-++		if (switch_port_tab[i]) {
-++			port = switch_port_tab[i];
-++			dev = port->netdev;
-++			unregister_netdev(dev);
-++			phy_disconnect(port->phydev);
-++			switch_port_tab[i] = 0;
-++			free_netdev(dev);
- +		}
- +	}
+-+		}
+-+	}
 -+
 -+	if (mac_port == 0) {
 -+		//PDEBUG("port 0\n");
@@ -7753,21 +7597,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		GSW_BIST_RESULT_TEST_0_REG |= ((0x2 << 28) | (0x2 << 30));
 -+	}
 -+
--+	return 0;
-++err_free_rings:
-++	kfree(sw->tx_ring);
-++err_free_rx:
-++	kfree(sw->rx_ring);
-++err_free:
-++	free_netdev(napi_dev);
-++	return err;
+++	netif_carrier_off(dev);
+ +	return 0;
  +}
  +
 -+
 -+
 -+
 -+static void star_gsw_config_VSC8X01()
-++static int __devexit eth_remove_one(struct platform_device *pdev)
+++static void eth_rx_mode(struct net_device *dev)
  +{
 -+   u16	phy_id = 0;
 -+   
@@ -7792,15 +7630,16 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+#endif
 -+}
 -+#endif
--+
+++	struct port *port = netdev_priv(dev);
+++	struct sw *sw = port->sw;
+++	u32 temp;
+ +
 -+#if defined(CONFIG_DORADO) || defined(CONFIG_DORADO2)
 -+static int star_gsw_config_port0_VSC7385(void)
 -+{
 -+	u32 mac_port_config=0;
-++	struct net_device *dev = platform_get_drvdata(pdev);
-++	struct sw *sw = netdev_priv(dev);
- +	int i;
-++	destroy_rings(sw);
+-+	int i;
+++	temp = __raw_readl(&sw->regs->mac_glob_cfg);
  +
 -+	printk("config VSC7385\n");
 -+
@@ -7832,23 +7671,24 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		} else {
 -+			udelay(100);
-++	for (i = 2; i >= 0; i--) {
-++		if (switch_port_tab[i]) {
-++			struct port *port = switch_port_tab[i];
-++			struct net_device *dev = port->netdev;
-++			unregister_netdev(dev);
-++			phy_disconnect(port->phydev);
-++			switch_port_tab[i] = 0;
-++			free_netdev(dev);
- +		}
- +	}
- +
+-+		}
+-+	}
+-+
 -+	if (!(mac_port_config & 0x1) || (mac_port_config & 0x2)) {
 -+		printk("MAC0 PHY Link Status : DOWN!\n");
 -+		return -1;
--+	} else {
+++	if (dev->flags & IFF_PROMISC) {
+++		if (port->id == 3)
+++			temp |= (1 << 2);
+++		else
+++			temp |= (1 << port->id);
+ +	} else {
 -+		printk("MAC0 PHY Link Status : UP!\n");
--+	}
+++		if (port->id == 3)
+++			temp &= ~(1 << 2);
+++		else
+++			temp &= ~(1 << port->id);
+ +	}
 -+
 -+	// enable MAC port 0
 -+	mac_port_config &= ~(0x1 << 18);
@@ -7873,9 +7713,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	GSW_BIST_RESULT_TEST_0_REG &= ~((0x3 << 24) | (0x3 << 26));
 -+	GSW_BIST_RESULT_TEST_0_REG |= ((0x2 << 24) | (0x2 << 26));
 -+
-++	release_resource(sw->mem_res);
-++	free_netdev(napi_dev);
- +	return 0;
+-+	return 0;
+++	__raw_writel(temp, &sw->regs->mac_glob_cfg);
  +}
 -+#endif
 ---- /dev/null
@@ -7948,12 +7787,17 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+//#define BCM_PORT_1G 2
 -+typedef enum
--+{
+++static int eth_set_mac(struct net_device *netdev, void *p)
+ +{
 -+   BCM_PORT_10M = 0,
 -+   BCM_PORT_100M,
 -+   BCM_PORT_1G,
 -+}BCM_PORT_SPEED;
--+
+++  struct port *port = netdev_priv(netdev);
+++	struct sw *sw = port->sw;
+++  struct sockaddr *addr = p;
+++	u32 cycles = 0;
+ +
 -+#define BCM_PORT_0 0
 -+#define BCM_PORT_1 1
 -+#define BCM_PORT_2 2
@@ -7961,7 +7805,9 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+#define BCM_PORT_4 4
 -+#define BCM_PORT_5 5
 -+#define BCM_PORT_IMP 6
--+
+++  if (!is_valid_ether_addr(addr->sa_data))
+++    return -EADDRNOTAVAIL;
+ +
 -+#endif // end #ifndef CNS3XXX_PHY_H
 ---- /dev/null
 -+++ b/drivers/net/cns3xxx/cns3xxx_sppe_hook.c
@@ -7988,11 +7834,23 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+ *  Contact Cavium Networks for more information
 -+ *
 -+ ******************************************************************************/
--+
+++	/* Invalidate old ARL Entry */
+++	if (port->id == 3)
+++		__raw_writel((port->id << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
+++	else
+++		__raw_writel(((port->id + 1) << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
+++	__raw_writel( ((netdev->dev_addr[0] << 24) | (netdev->dev_addr[1] << 16) |
+++			(netdev->dev_addr[2] << 8) | (netdev->dev_addr[3])),
+++			&sw->regs->arl_ctrl[1]);
+ +
 -+#if defined(CONFIG_CNS3XXX_SPPE)
 -+#include <linux/module.h>
 -+#include <linux/cns3xxx/sppe.h>
--+
+++	__raw_writel( ((netdev->dev_addr[4] << 24) | (netdev->dev_addr[5] << 16) |
+++			(1 << 1)),
+++			&sw->regs->arl_ctrl[2]);
+++	__raw_writel((1 << 19), &sw->regs->arl_vlan_cmd);
+ +
 -+int sppe_hook_ready = 0;
 -+int (*sppe_func_hook)(SPPE_PARAM *param) = NULL;
 -+int sppe_pci_fp_ready = 0;
@@ -8544,14 +8402,19 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			(enable==1) ? (CPU_CFG_REG &= (~(1 << 18)) ) : (CPU_CFG_REG |= (1 << 18)) ;
 -+			break;
 -+		}
--+	}
+++	while (((__raw_readl(&sw->regs->arl_vlan_cmd) & (1 << 21)) == 0)
+++			&& cycles < 5000) {
+++		udelay(1);
+++		cycles++;
+ +	}
 -+}
--+
+ +
 -+static inline int cns3xxx_vlan_table_lookup(VLANTableEntry *entry)
 -+{
 -+	VLAN_CTRL2_REG |= entry->vid;
 -+	ARL_VLAN_CMD_REG |= (1 << 8); // look up vlan table command
--+
+++	cycles = 0;
+ +
 -+	// wait for vlan command complete
 -+	while(( (ARL_VLAN_CMD_REG >> 9) & 1) == 0) ;
 -+	
@@ -8559,18 +8422,29 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		// not found any entry
 -+		return CAVM_NOT_FOUND;
 -+	}
--+
+++  memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+ +
 -+        entry->valid = ((VLAN_CTRL0_REG >> 31) & 0x1);
 -+        entry->vid = ((VLAN_CTRL2_REG >> 31) & 0xfff);
 -+        entry->wan_side = ((VLAN_CTRL0_REG >> 30) & 0x1);
 -+        entry->etag_pmap = ((VLAN_CTRL0_REG >> 25) & 0x1f);
 -+        entry->mb_pmap = ((VLAN_CTRL0_REG >> 9) & 0x1f);
--+
+++	if (port->id == 3)
+++		__raw_writel((port->id << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
+++	else
+++		__raw_writel(((port->id + 1) << 16) | (0x4 << 9), &sw->regs->arl_ctrl[0]);
+++	__raw_writel( ((addr->sa_data[0] << 24) | (addr->sa_data[1] << 16) |
+++			(addr->sa_data[2] << 8) | (addr->sa_data[3])),
+++			&sw->regs->arl_ctrl[1]);
+ +
 -+        entry->my_mac[0] = ((VLAN_CTRL1_REG >> 24) & 0xff);
 -+        entry->my_mac[1] = ((VLAN_CTRL1_REG >> 16) & 0xff);
 -+        entry->my_mac[2] = ((VLAN_CTRL1_REG >> 8) & 0xff);
 -+        entry->my_mac[3] = (VLAN_CTRL1_REG & 0xff);
--+
+++	__raw_writel( ((addr->sa_data[4] << 24) | (addr->sa_data[5] << 16) |
+++			(7 << 4) | (1 << 1)), &sw->regs->arl_ctrl[2]);
+++	__raw_writel((1 << 19), &sw->regs->arl_vlan_cmd);
+ +
 -+        entry->my_mac[4] = ((VLAN_CTRL2_REG >> 24) & 0xff);
 -+        entry->my_mac[5] = ((VLAN_CTRL2_REG >> 16) & 0xff);
 -+
@@ -8712,17 +8586,22 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	} else {
 -+		// not found
 -+		return CAVM_NOT_FOUND;
--+	}
+++	while (((__raw_readl(&sw->regs->arl_vlan_cmd) & (1 << 21)) == 0)
+++		&& cycles < 5000) {
+++		udelay(1);
+++		cycles++;
+ +	}
 -+#if 0
 -+	printk("[kernel mode] ARL_VLAN_CMD_REG : %#x\n", ARL_VLAN_CMD_REG);
 -+	printk("[kernel mode] ARL_CTRL0_REG : %#x\n", ARL_CTRL0_REG);
 -+	printk("[kernel mode] ARL_CTRL1_REG : %#x\n", ARL_CTRL1_REG);
 -+	printk("[kernel mode] ARL_CTRL2_REG : %#x\n", ARL_CTRL2_REG);
 -+#endif
--+
+ +
 -+	return CAVM_FOUND;
--+}
--+
+++	return 0;
+ +}
+ +
 -+static inline int cns3xxx_arl_table_search_again(ARLTableEntry *entry)
 -+{
 -+	ARL_CTRL0_REG = 0;
@@ -9394,14 +9273,19 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	{2, 1, PORT1_PVID, 0, 0, MAC_PORT1_PMAP | CPU_PORT_PMAP, my_vlan1_mac},
 -+	{3, 1, PORT2_PVID, 1, 0, MAC_PORT2_PMAP | CPU_PORT_PMAP, my_vlan2_mac},
 -+	//{2, 1, 4, 0, 0, MAC_PORT0_PMAP | MAC_PORT1_PMAP | MAC_PORT2_PMAP | CPU_PORT_PMAP, my_vlan3_mac}, // for cpu
-++static struct platform_driver cns3xxx_eth_driver = {
-++	.driver.name	= DRV_NAME,
-++	.probe		= eth_init_one,
-++	.remove		= eth_remove_one,
+++static const struct net_device_ops cns3xxx_netdev_ops = {
+++	.ndo_open = eth_open,
+++	.ndo_stop = eth_close,
+++	.ndo_start_xmit = eth_xmit,
+++	.ndo_set_rx_mode = eth_rx_mode,
+++	.ndo_do_ioctl = eth_ioctl,
+++	.ndo_change_mtu = eth_change_mtu,
+++	.ndo_set_mac_address = eth_set_mac,
+++	.ndo_validate_addr = eth_validate_addr,
  +};
  +
 -+static ARLTableEntry arl_table_entry[] = 
-++static int __init eth_init_module(void)
+++static int __devinit eth_init_one(struct platform_device *pdev)
  +{
 -+	// vid; pmap; *mac; age_field; vlan_mac ; filter
 -+	{PORT0_PVID, CPU_PORT_PMAP, my_vlan0_mac, 7, 1, 0},
@@ -9413,16 +9297,28 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	//{CPU_PVID, 0x4, my_vlan2_mac, 7, 1, 0},
 -+	//{CPU_PVID, MAC_PORT2_PMAP, my_vlan2_mac, 7, 1, 0},
 -+};
--+
+++	int i;
+++	struct port *port;
+++	struct sw *sw;
+++	struct net_device *dev;
+++	struct cns3xxx_plat_info *plat = pdev->dev.platform_data;
+++	u32 regs_phys;
+++	char phy_id[MII_BUS_ID_SIZE + 3];
+++	int err;
+++	u32 temp;
+ +
 -+static NetDevicePriv net_device_prive[]= {
 -+	/*  pmap, is_wan, s-tag, vlan_tag or pvid, rx_func_ptr, tx_func_ptr, open_ptr, close_ptr, which port, mac, VLANTableEntry, ARLTableEntry, NICSetting, netdev s-tag, name */
 -+	{MAC_PORT0_PMAP, 0, 1, PORT0_NETDEV_INDEX, rx_port_base, tx_port_base, open_port0, close_port0, MAC_PORT0, my_vlan0_mac, &vlan_table_entry[0], &arl_table_entry[0], 0, 0},   // eth0 
 -+	{MAC_PORT1_PMAP, 0, 2, PORT1_NETDEV_INDEX, rx_port_base, tx_port_base, open_port1, close_port1, MAC_PORT1, my_vlan1_mac, &vlan_table_entry[1], &arl_table_entry[1], 0, 0},   // eth1 
 -+	{MAC_PORT2_PMAP, 1, 3, PORT2_NETDEV_INDEX, rx_port_base, tx_port_base, open_port2, close_port2, MAC_PORT2, my_vlan2_mac,  &vlan_table_entry[2], &arl_table_entry[2], 0, 0}   // eth2 
 -+					 };
--+
+ +
 -+#endif
--+
+++	if (!(napi_dev = alloc_etherdev(sizeof(struct sw))))
+++		return -ENOMEM;
+++	strcpy(napi_dev->name, "switch%d");
+ +
 -+#ifdef CNS3XXX_NON_NIC_MODE_8021Q
 -+//#error  "8021Q"
 -+#define PORT0_PVID 50
@@ -9720,33 +9616,38 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		PORT0_LINK_UP
 -+	} 
 -+	++rc_port0;
-++	int err;
-++	if ((err = cns3xxx_mdio_register()))
-++		return err;
-++	return platform_driver_register(&cns3xxx_eth_driver);
- +}
- +
+-+}
+-+
 -+static inline void close_port0(void)
-++static void __exit eth_cleanup_module(void)
- +{
+-+{
 -+	--rc_port0;
 -+        if (rc_port0 == 0) {
 -+		// link down
 -+		PORT0_LINK_DOWN
 -+		enable_port(0, 0);
--+	}
-++	platform_driver_unregister(&cns3xxx_eth_driver);
-++	cns3xxx_mdio_remove();
- +}
+++	SET_NETDEV_DEV(napi_dev, &pdev->dev);
+++	sw = netdev_priv(napi_dev);
+++	memset(sw, 0, sizeof(struct sw));
+++	sw->regs = (struct switch_regs __iomem *)CNS3XXX_SWITCH_BASE_VIRT;
+++	regs_phys = CNS3XXX_SWITCH_BASE;
+++	sw->mem_res = request_mem_region(regs_phys, REGS_SIZE, napi_dev->name);
+++	if (!sw->mem_res) {
+++		err = -EBUSY;
+++		goto err_free;
+ +	}
+-+}
  +
 -+static inline void open_port1(void)
 -+{
--+
+++	temp = 0x80000000;
+++	temp |= (PORT_DISABLE);
+++	__raw_writel(temp, &sw->regs->mac_cfg[2]);
+ +
 -+	enable_port(1, 1);
 -+	// link up
 -+	PORT1_LINK_UP
 -+}
--+
+ +
 -+static inline void close_port1(void)
 -+{
 -+	enable_port(1, 0);
@@ -9776,17 +9677,25 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+{
 -+	if (!fp_ref_cnt) {
 -+		fp_ref_cnt++;
--+	}
+++	if (!(sw->rx_ring = kmalloc(sizeof(struct _rx_ring), GFP_KERNEL))) {
+++		err = -ENOMEM;
+++		goto err_free;
+ +	}
 -+}
--+
+++	memset(sw->rx_ring, 0, sizeof(struct _rx_ring));
+ +
 -+static inline void close_fp(void)
 -+{
 -+	if (fp_ref_cnt) {
 -+		fp_ref_cnt--;
--+	}
+++	if (!(sw->tx_ring = kmalloc(sizeof(struct _tx_ring), GFP_KERNEL))) {
+++		err = -ENOMEM;
+++		goto err_free_rx;
+ +	}
 -+}
 -+#endif
--+
+++	memset(sw->tx_ring, 0, sizeof(struct _tx_ring));
+ +
 -+static u8 my_vlan0_mac[] = {0x00, 0x11, 0x22, 0x33, 0x55, 0x00};
 -+static u8 my_vlan1_mac[] = {0x00, 0x11, 0x22, 0x33, 0x55, 0x11};
 -+static u8 my_vlan2_mac[] = {0x00, 0x11, 0xbb, 0xcc, 0xdd, 0x70};
@@ -11992,21 +11901,34 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+	if (!sppe_hook_ready) {
 -+		goto NOT_IN_FP;
--+	}
--+
+++	if ((err = init_rings(sw)) != 0) {
+++		destroy_rings(sw);
+++		err = -ENOMEM;
+++		goto err_free_rings;
+ +	}
+++	platform_set_drvdata(pdev, napi_dev);
+ +
 -+	if (!sppe_pci_fp_ready) {
 -+		goto NOT_IN_FP;
 -+	}
--+
+++	netif_napi_add(napi_dev, &sw->napi, eth_poll, NAPI_WEIGHT);
+ +
 -+	/* check device packet comes from, is a registed device? */
 -+	memset(&param, 0, sizeof(SPPE_PARAM));
 -+	param.cmd = SPPE_CMD_PCI_FP_DEV;
 -+	param.op = SPPE_OP_GET;
 -+	param.data.sppe_pci_fp_dev.dev = skb->dev;
 -+	sppe_pci_fp_hook(&param);
--+
+++	for (i = 0; i < 3; i++) {
+++		if (!(plat->ports & (1 << i))) {
+++			if (i == 2)
+++				i++;
+ +
 -+	pci_dev_index = param.data.sppe_pci_fp_dev.index;
--+
+++			temp = __raw_readl(&sw->regs->mac_cfg[i]);
+++			temp |= (PORT_DISABLE);
+++			__raw_writel(temp, &sw->regs->mac_cfg[i]);
+ +
 -+	if ((-1) == pci_dev_index) {
 -+		goto NOT_IN_FP;
 -+	}
@@ -12016,9 +11938,10 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+		if (!tun_netdev) {
 -+			goto NOT_IN_FP;
--+		}
+++			continue;
+ +		}
 -+	}
--+
+ +
 -+	/* check PPE status */
 -+	memset(&param, 0, sizeof(SPPE_PARAM));
 -+	param.cmd = SPPE_CMD_ENABLE;
@@ -12067,15 +11990,28 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		default:
 -+			goto NOT_IN_FP;
--+		}
--+
+++		if (!(dev = alloc_etherdev(sizeof(struct port)))) {
+++			goto free_ports;
+ +		}
+ +
 -+		if (SPPE_RESULT_SUCCESS != sppe_func_hook(&param)) {
 -+			goto NOT_IN_FP;
 -+		} else {
 -+			struct ethhdr *eth;
--+
+++		//SET_NETDEV_DEV(dev, &pdev->dev);
+++		port = netdev_priv(dev);
+++		port->netdev = dev;
+++		if (i == 2)
+++			port->id = 3;
+++		else
+++			port->id = i;
+++		port->sw = sw;
+ +
 -+			eth = (struct ethhdr *)skb->mac_header;
--+
+++		temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
+++		temp |= (PORT_DISABLE);
+++		__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
+ +
 -+			memset(&param, 0, sizeof(SPPE_PARAM));
 -+			param.cmd = SPPE_CMD_ARP;
 -+			param.op = SPPE_OP_SET;
@@ -12088,7 +12024,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			param.data.sppe_arp.mac[4] = eth->h_source[4];
 -+			param.data.sppe_arp.mac[5] = eth->h_source[5];
 -+			param.data.sppe_arp.unused_1 = pci_dev_index;
--+
+++		dev->netdev_ops = &cns3xxx_netdev_ops;
+++		dev->ethtool_ops = &cns3xxx_ethtool_ops;
+++		dev->tx_queue_len = 1000;
+++		dev->features |= NETIF_F_IP_CSUM;
+++		switch_port_tab[i] = port;
+++		memcpy(dev->dev_addr, &plat->hwaddr[i], ETH_ALEN);
+ +
 -+			if (SPPE_RESULT_SUCCESS != sppe_func_hook(&param)) {
 -+				printk("add ARP fail\n");
 -+			#if 0
@@ -12102,7 +12044,14 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			}
 -+			#endif
 -+			}
--+		}
+++		snprintf(phy_id, MII_BUS_ID_SIZE + 3, PHY_ID_FMT, "0", plat->phy[i]);
+++		port->phydev = phy_connect(dev, phy_id, &cns3xxx_adjust_link, 0,
+++			PHY_INTERFACE_MODE_RGMII);
+++		if ((err = IS_ERR(port->phydev))) {
+++			switch_port_tab[i] = 0;
+++			free_netdev(dev);
+++			goto free_ports;
+ +		}
 -+		break; /* case ETH_P_IP: */
 -+#if defined (CONFIG_IPV6)
 -+	case ETH_P_IPV6:
@@ -12110,9 +12059,10 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		switch (ipv6h->nexthdr) {
 -+		case IPPROTO_TCP:
 -+			th = (struct tcphdr *) ((int *)ipv6h + 10); /* IPv6 header length is 40 bytes */
--+
+ +
 -+			if ((th->syn) || (th->fin) || (th->rst)) { goto NOT_IN_FP; }
--+
+++		port->phydev->irq = PHY_POLL;
+ +
 -+			param.data.flow_route_ipv6.l4_prot = SPPE_PROT_TCP;
 -+			param.data.flow_route_ipv6.l4.port.src = ntohs(th->source);
 -+			param.data.flow_route_ipv6.l4.port.dst = ntohs(th->dest);
@@ -12126,8 +12076,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			break;
 -+		default:
 -+			goto NOT_IN_FP;
--+		}
--+
+++		if ((err = register_netdev(dev))) {
+++			phy_disconnect(port->phydev);
+++			switch_port_tab[i] = 0;
+++			free_netdev(dev);
+++			goto free_ports;
+ +		}
+ +
 -+		param.data.flow_route_ipv6.sip[0] = ntohl(ipv6h->saddr.s6_addr32[0]);
 -+		param.data.flow_route_ipv6.sip[1] = ntohl(ipv6h->saddr.s6_addr32[1]);
 -+		param.data.flow_route_ipv6.sip[2] = ntohl(ipv6h->saddr.s6_addr32[2]);
@@ -12136,13 +12091,28 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		param.data.flow_route_ipv6.dip[1] = ntohl(ipv6h->daddr.s6_addr32[1]);
 -+		param.data.flow_route_ipv6.dip[2] = ntohl(ipv6h->daddr.s6_addr32[2]);
 -+		param.data.flow_route_ipv6.dip[3] = ntohl(ipv6h->daddr.s6_addr32[3]);
--+
+++		printk(KERN_INFO "%s: RGMII PHY %i on cns3xxx Switch\n", dev->name, plat->phy[i]);
+++		netif_carrier_off(dev);
+++		dev = 0;
+++	}
+ +
 -+		param.cmd = SPPE_CMD_FLOW_ROUTE_IPV6;
 -+		param.op = SPPE_OP_GET;
--+
+++	return 0;
+ +
 -+		if (SPPE_RESULT_SUCCESS != sppe_func_hook(&param)) {
 -+			goto NOT_IN_FP;
--+		}
+++free_ports:
+++	err = -ENOMEM;
+++	for (--i; i >= 0; i--) {
+++		if (switch_port_tab[i]) {
+++			port = switch_port_tab[i];
+++			dev = port->netdev;
+++			unregister_netdev(dev);
+++			phy_disconnect(port->phydev);
+++			switch_port_tab[i] = 0;
+++			free_netdev(dev);
+ +		}
 -+
 -+		break; /* case ETH_P_IPV6: */
 -+#endif
@@ -12150,7 +12120,7 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		break;
 -+	default: /* unsupport protocol */
 -+		goto NOT_IN_FP;
--+	}
+ +	}
 -+	/* Update counter */
 -+	skb->dev = tun_netdev;
 -+	skb->ip_summed = CHECKSUM_NONE;
@@ -12162,9 +12132,16 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+
 -+NOT_IN_FP:
 -+	return (-1);
--+}
+++err_free_rings:
+++	kfree(sw->tx_ring);
+++err_free_rx:
+++	kfree(sw->rx_ring);
+++err_free:
+++	free_netdev(napi_dev);
+++	return err;
+ +}
 -+#endif
--+
+ +
 -+
 -+
 - 
@@ -12214,10 +12191,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 - 
 -+#if defined (CONFIG_CNS3XXX_SPPE)
 -+static int sppe_flow_del(struct nf_conn *ct)
--+{
+++static int __devexit eth_remove_one(struct platform_device *pdev)
+ +{
 -+	if (sppe_hook_ready) {
 -+		SPPE_PARAM param;
--+
+++	struct net_device *dev = platform_get_drvdata(pdev);
+++	struct sw *sw = netdev_priv(dev);
+++	int i;
+++	destroy_rings(sw);
+ +
 -+		struct nf_conntrack_tuple *orig, *reply;
 -+
 -+		orig = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
@@ -12229,7 +12211,15 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+			param.cmd = SPPE_CMD_FLOW_ROUTE_IPV6;
 -+		} else {
 -+			goto SPPE_FLOW_DEL_FINI;
--+		}
+++	for (i = 2; i >= 0; i--) {
+++		if (switch_port_tab[i]) {
+++			struct port *port = switch_port_tab[i];
+++			struct net_device *dev = port->netdev;
+++			unregister_netdev(dev);
+++			phy_disconnect(port->phydev);
+++			switch_port_tab[i] = 0;
+++			free_netdev(dev);
+ +		}
 -+
 -+		if (IPPROTO_TCP == orig->dst.protonum) {
 -+			param.data.flow_nat_ipv4.l4_prot = SPPE_PROT_TCP;
@@ -12290,14 +12280,21 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+		if (SPPE_RESULT_FAIL == sppe_func_hook(&param)) {
 -+			return (-1);
 -+		}
--+	}
--+
+ +	}
+ +
 -+SPPE_FLOW_DEL_FINI:
--+	return 0;
--+}
+++	release_resource(sw->mem_res);
+++	free_netdev(napi_dev);
+ +	return 0;
+ +}
 -+#endif
--+
--+
+ +
+++static struct platform_driver cns3xxx_eth_driver = {
+++	.driver.name	= DRV_NAME,
+++	.probe		= eth_init_one,
+++	.remove		= eth_remove_one,
+++};
+ +
 - static void death_by_timeout(unsigned long ul_conntrack)
 - {
 - 	struct nf_conn *ct = (void *)ul_conntrack;
@@ -12337,7 +12334,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 - 
 -+#if defined (CONFIG_CNS3XXX_SPPE)
 -+static int sppe_gre_flow_add(struct nf_conn *ct)
--+{
+++static int __init eth_init_module(void)
+ +{
 -+	SPPE_PARAM param;
 -+	struct nf_conntrack_tuple *orig, *reply;
 -+
@@ -12381,9 +12379,13 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	}
 -+
 -+	return 0;
--+}
+++	int err;
+++	if ((err = cns3xxx_mdio_register()))
+++		return err;
+++	return platform_driver_register(&cns3xxx_eth_driver);
+ +}
 -+#endif
--+
+ +
 -+
 -+
 - /* Returns verdict for packet, and may modify conntrack */
@@ -12419,7 +12421,8 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 - 
 -+#if defined (CONFIG_CNS3XXX_SPPE)
 -+static int sppe_tcp_flow_add_ipv4(struct nf_conn *ct)
--+{
+++static void __exit eth_cleanup_module(void)
+ +{
 -+	SPPE_PARAM param;
 -+	struct nf_conntrack_tuple *orig, *reply;
 -+	
@@ -12474,8 +12477,10 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/205-cns3xxx_net_device_support.
 -+	}
 -+	
 -+	return 0;
--+}
--+
+++	platform_driver_unregister(&cns3xxx_eth_driver);
+++	cns3xxx_mdio_remove();
+ +}
+ +
 -+static int sppe_tcp_flow_add_ipv6(struct nf_conn *ct)
 -+{
 -+	SPPE_PARAM param;
@@ -12982,55 +12987,19 @@ Index: trunk/target/linux/cns3xxx/patches-2.6.31/100-cns3xxx_support.patch
  +	return 0;
  +}
  +late_initcall(laguna_model_setup);
-Index: trunk/package/kernel/modules/fs.mk
+Index: trunk/target/linux/cns3xxx/patches-2.6.31/212-backport_jffs2_sum_init_fix.patch
 ===================================================================
---- trunk/package/kernel/modules/fs.mk	(revision 25747)
-+++ trunk/package/kernel/modules/fs.mk	(working copy)
-@@ -76,7 +76,7 @@
-   SUBMENU:=$(FS_MENU)
-   TITLE:=EXT2 filesystem support
-   KCONFIG:=CONFIG_EXT2_FS
--  DEPENDS:=$(if $(DUMP)$(CONFIG_FS_MBCACHE),+kmod-fs-mbcache)
-+  DEPENDS:=$(if $(DUMP)$(CONFIG_FS_MBCACHE),+kmod-fs-mbcache) @LINUX_2_6_30||LINUX_2_6_31
-   FILES:=$(LINUX_DIR)/fs/ext2/ext2.ko
-   AUTOLOAD:=$(call AutoLoad,32,ext2,1)
- endef
-@@ -94,7 +94,7 @@
-   KCONFIG:= \
- 	CONFIG_EXT3_FS \
- 	CONFIG_JBD
--  DEPENDS:=$(if $(DUMP)$(CONFIG_FS_MBCACHE),+kmod-fs-mbcache)
-+  DEPENDS:=$(if $(DUMP)$(CONFIG_FS_MBCACHE),+kmod-fs-mbcache) @LINUX_2_6_30||LINUX_2_6_31 
-   FILES:= \
- 	$(LINUX_DIR)/fs/ext3/ext3.ko \
- 	$(LINUX_DIR)/fs/jbd/jbd.ko
-Index: trunk/package/kernel/Makefile
-===================================================================
---- trunk/package/kernel/Makefile	(revision 25747)
-+++ trunk/package/kernel/Makefile	(working copy)
-@@ -45,5 +45,24 @@
- 
- $(eval $(if $(DUMP),,$(call BuildPackage,kernel)))
- 
--include ./modules/*.mk
-+include ./modules/001-depends.mk
-+include ./modules/block.mk
-+include ./modules/crypto.mk
-+#include ./modules/firewire.mk
-+include ./modules/fs.mk
-+include ./modules/hwmon.mk
-+include ./modules/i2c.mk
-+include ./modules/netdevices.mk
-+include ./modules/netfilter.mk
-+include ./modules/netsupport.mk
-+include ./modules/nls.mk
-+include ./modules/other.mk
-+#include ./modules/pcmcia.mk
-+#include ./modules/sound.mk
-+include ./modules/spi.mk
-+include ./modules/usb.mk
-+#include ./modules/video.mk
-+include ./modules/virtual.mk
-+include ./modules/w1.mk
-+include ./modules/wireless.mk
- -include $(TOPDIR)/target/linux/*/modules.mk
+--- trunk/target/linux/cns3xxx/patches-2.6.31/212-backport_jffs2_sum_init_fix.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches-2.6.31/212-backport_jffs2_sum_init_fix.patch	(revision 0)
+@@ -0,0 +1,11 @@
++--- a/fs/jffs2/summary.c
+++++ b/fs/jffs2/summary.c
++@@ -23,7 +23,7 @@
++ 
++ int jffs2_sum_init(struct jffs2_sb_info *c)
++ {
++-	uint32_t sum_size = max_t(uint32_t, c->sector_size, MAX_SUMMARY_SIZE);
+++	uint32_t sum_size = min_t(uint32_t, c->sector_size, MAX_SUMMARY_SIZE);
++ 
++ 	c->summary = kzalloc(sizeof(struct jffs2_summary), GFP_KERNEL);
++ 

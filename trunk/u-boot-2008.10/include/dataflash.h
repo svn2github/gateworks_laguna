@@ -144,6 +144,8 @@ struct dataflash_addr {
 #define NS_NX25P16	((0xEF << 16) | 0x2015)
 #define ST_M25P32	((0x20 << 16) | 0x2016)
 #define ST_M25P64	((0x20 << 16) | 0x2017)
+#define ST_M25P128	((0x20 << 16) | 0x2018)
+#define S25FL128 ((0x01 << 16) | 0x2018)
 
 #define AT45DB161	0x2c
 #define AT45DB021	0x14

@@ -148,7 +148,7 @@ ifeq ($(ARCH),arm)
 ifeq ($(BIG_ENDIAN), y)
 CROSS_COMPILE = armeb-linux-
 else
-CROSS_COMPILE = armv6k-openwrt-linux-
+CROSS_COMPILE = arm-openwrt-linux-
 endif
 endif
 ifeq ($(ARCH),i386)
@@ -2568,6 +2568,7 @@ davinci_sonata_config :	unconfig
 #########################################################################
 
 cavium_cns3000_config \
+cavium_cns3000_spi_config \
 cavium_cns3000be8_config : unconfig
 	@if [ "$(findstring _cns3000be8_, $@)" ] ; then \
 		sed -r 's/ENDIANNESS/big/g; s/#.*//' board/cavium/cns3000/u-boot.lds.template \

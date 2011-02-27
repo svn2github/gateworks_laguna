@@ -27,8 +27,9 @@
 #include <version.h>
 
 #include <cns3000.h>
-
-i2c_init:
+.global asm_i2c_init
+asm_i2c_init:
+#if 0
 	// Enable I2C Clock
 	ldr	r0, =0x77000000
 	ldr r1, [r0]
@@ -41,6 +42,7 @@ i2c_init:
 	str r1, [r0, #0x4]
 	orr r1, r1, #0x8
 	str r1, [r0, #0x4]
+#endif
 
 	// Disable the Controller
 	ldr r0, =0x71000000
@@ -61,7 +63,11 @@ i2c_init:
 	str r1, [r0, #0x20]
 
 	// Set I2C Timers
+	//mov r0, #0x71000000
 	ldr r0, =0x71000000
+	//mov r1, #0xff
+	//orr r1, r1, #0x7600
+	//orr r1, r1, #0x10000
 	ldr r1, =0x000176ff	
 	str r1, [r0, #0x24]
 	mov r1, #0x3
@@ -151,26 +157,25 @@ i2c_read_byte:
 	mov r3, r10
 	mov lr, r11
 	mov pc, lr
-	
 
 .globl secondary_cores
 secondary_cores:
 	mov	r12, lr
 
+2:
 	/* Have we already remapped. */
 	ldr	r8, =CNS3000_VEGA_MISC_BASE
 	ldr	r6, [r8, #0x00]
 	and	r6, r6, #0x01	
 
 	tst	r6, #0x01
-	beq	2f
-	mov	pc, #0x10000000
-2:
+	bne	2b
+
         /* Enable software interrupt */
 	ldr	r5, =CNS3000_TC11MP_GIC_CPU_BASE
-	mov	r6, #0x01
+	mov	r6, #0x00
 	str	r6, [r5, #GIC_CPU_CTRL_OFFSET]
-	mov	r6, #0xF0
+	mov	r6, #0x00
 	str	r6, [r5, #GIC_CPU_PRIMASK_OFFSET]
 
 	/* Read core number into r0 */
@@ -235,6 +240,17 @@ lowlevel_init:
 
 
 ddr2_sdram_ctrl_init:
+	mov r13, lr
+
+  mov r3, #0x51   // EEPROM Device Address
+  mov r4, #0x2b // EEPROM Offset
+  bl i2c_read_byte
+	mov r6, r5
+
+  mov r3, #0x51   // EEPROM Device Address
+  mov r4, #0x2d // EEPROM Offset
+  bl i2c_read_byte
+
 	/* */
 /*
 	ldr r0, =0x77000004
@@ -325,13 +341,11 @@ ddr2_sdram_ctrl_init:
 	ldr	r1, =0x0000000C
 	str r1, [r0, #DMC_CAS_LATENCY_OFFSET]   /* 0x014 */
 	
-#ifdef PHYS_SDRAM_32BIT
-	ldr	r1, =0x00000044
-#elif defined (PHYS_SDRAM_16BIT_512)
-	ldr	r1, =0x00000004
-#else
-	ldr	r1, =0x00000034
-#endif
+	mov r1, #0x4
+	cmp r5, #0x2
+	orreq r1, r1, #0x40
+	cmp r6, #0x4
+	orreq r1, r1, #0x30
 	str r1, [r0, #DMC_MEMORY_CFG2_OFFSET]   /* 0x04C */
 
         /* Set request memory for LCD high priority */
@@ -652,6 +666,7 @@ ddr_clock_end:
 //	str	r1, [r0, #DMC_MEMC_CMD_OFFSET]
 
 	/* DMC base address */
+	mov lr, r13
 	mov	pc, lr
 
 

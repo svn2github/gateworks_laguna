@@ -53,6 +53,18 @@ int AT91F_DataflashInit (void)
 		dfcode = AT91F_DataflashProbe (cs[i].cs,
 				&dataflash_info[i].Desc);
 		switch (dfcode) {
+		case ST_M25P128:
+		case S25FL128:
+			dataflash_info[i].Device.pages_number = 65536;
+			dataflash_info[i].Device.pages_size = 256;
+			dataflash_info[i].Device.page_offset = 0;
+			dataflash_info[i].Device.byte_mask = 0x0;
+			dataflash_info[i].Device.cs = cs[i].cs;
+			dataflash_info[i].Desc.DataFlash_state = IDLE;
+			dataflash_info[i].logical_address = cs[i].addr;
+			dataflash_info[i].id = dfcode;
+			found[i] += dfcode;;
+			break;
 		case MX25L32:
 			dataflash_info[i].Device.pages_number = 16384;
 			dataflash_info[i].Device.pages_size = 256;

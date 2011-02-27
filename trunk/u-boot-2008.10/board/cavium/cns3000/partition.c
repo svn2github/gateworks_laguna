@@ -32,7 +32,8 @@ struct dataflash_addr cs[CFG_MAX_DATAFLASH_BANKS] = {
 
 /*define the area offsets*/
 dataflash_protect_t area_list[NB_DATAFLASH_AREA] = {
-	{0x00000000, 0x0002FFFF, FLAG_PROTECT_CLEAR, 0, "U-boot"},
-	{0x00030000, 0x0003FFFF, FLAG_PROTECT_CLEAR, 0, "Environment"},
-	{0x00040000, 0x007FFFFF, FLAG_PROTECT_CLEAR, 0,	"Kernel"},
+	{0x00000000, 0x0003FFFF, FLAG_PROTECT_CLEAR, 0, "U-boot"},
+	{0x00040000, 0x0007FFFF, FLAG_PROTECT_CLEAR, 0, "Environment"},
+	{0x00080000, 0x0027FFFF, FLAG_PROTECT_CLEAR, 0,	"linux"},
+	{0x00280000, 0x00FFFFFF, FLAG_PROTECT_CLEAR, 0, "rootfs"},
 };

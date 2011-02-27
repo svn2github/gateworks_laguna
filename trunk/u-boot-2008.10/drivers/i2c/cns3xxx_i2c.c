@@ -46,6 +46,7 @@
 #define CNS3xxx_I2C_DISABLE_INTR()    (I2C_INTERRUPT_ENABLE_REG) &= 0xfc
 
 #define TWI_TIMEOUT         (10*HZ)
+#define I2C_50KHZ          	 50000
 #define I2C_100KHZ          100000
 #define I2C_200KHZ          200000
 #define I2C_300KHZ          300000
@@ -63,6 +64,7 @@ void i2c_init (int speed, int slaveadd)
   /* Enable clock for I2C */
 #define PMU_CLK_GATE_REG 0x77000000
 #define PMU_SOFT_RST   0x77000004
+#if 0
   temp = IO_I2C_READ(PMU_CLK_GATE_REG);
   temp |= (1 << 3);
   IO_I2C_WRITE(PMU_CLK_GATE_REG, temp);
@@ -71,6 +73,7 @@ void i2c_init (int speed, int slaveadd)
   IO_I2C_WRITE(PMU_SOFT_RST, temp);
   temp |= (1 << 3);
   IO_I2C_WRITE(PMU_SOFT_RST, temp);
+#endif
 
   I2C_CONTROLLER_REG = 0; /* Disabled the I2C */
 
@@ -92,7 +95,6 @@ void i2c_init (int speed, int slaveadd)
 
   /* Enable the I2C Controller */
   CNS3xxx_I2C_ENABLE();
-
 }
 
 static int i2c_read_byte (u8 devaddr, u8 regoffset, u8 * value)

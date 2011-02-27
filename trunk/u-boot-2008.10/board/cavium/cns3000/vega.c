@@ -247,8 +247,12 @@ int checkboard(void)
 ******************************/
 int dram_init (void)
 {
+	unsigned char eeprom;
+	unsigned int temp = 0x01000000;
 	gd->bd->bi_dram[0].start = PHYS_SDRAM_1;
-        gd->bd->bi_dram[0].size = PHYS_SDRAM_1_SIZE;
+
+	i2c_read(0x51, 0x2b, 1, &eeprom, 1);
+	gd->bd->bi_dram[0].size = temp << eeprom;
 
 	return 0;
 }

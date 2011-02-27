@@ -88,8 +88,8 @@ Spi_Flash_Initialize(u8 spi_flash_channel)
 		 (0x0 << 10) | /* disable FIFO */
 		 (0x1 << 11) | /* SPI master mode */
 		 (0x0 << 12) | /* disable SPI loopback mode */
-		 (0x0 << 13) |
-		 (0x0 << 14) |
+		 (0x1 << 13) |
+		 (0x1 << 14) |
 		 (0x0 << 24) | /* Disable SPI Data Swap */
 		 (0x0 << 30) | /* Disable SPI High Speed Read for BootUp */
 		 (0x0 << 31)); /* Disable SPI */
@@ -106,7 +106,7 @@ Spi_Flash_Initialize(u8 spi_flash_channel)
 
 	// Configure Rx FIFO Threshold
 	SPI_FIFO_RECEIVE_CONFIG_REG &= ~(0x03 << 4);
-	SPI_FIFO_RECEIVE_CONFIG_REG |= ((0x1 & 0x03) << 4);
+	SPI_FIFO_RECEIVE_CONFIG_REG |= ((0x0 & 0x03) << 4);
 
 	SPI_INTERRUPT_ENABLE_REG = 0;
 
@@ -422,6 +422,7 @@ Spi_Flash_Sector_Erase(u8 spi_flash_channel, u32 sector_addr)
 	struct spi_flash_info *flash_info = &spi_flash_bank[spi_flash_channel];
 	u32 rx_data;
 
+
 	// The specified address is beyond the maximum address range
 	if (sector_addr > (flash_info->sectors * flash_info->sector_size))
 		return 0;
@@ -556,6 +557,8 @@ void AT91F_SpiInit(void)
 #define NS_NX25P16  ((0xEF << 16) | 0x2015)
 #define ST_M25P32   ((0x20 << 16) | 0x2016)
 #define ST_M25P64   ((0x20 << 16) | 0x2017)
+#define ST_M25P128  ((0x20 << 16) | 0x2018)
+#define S25FL128  	((0x01 << 16) | 0x2018)
 #define MX_25L32    ((0xC2 << 16) | 0x2016)
 #define MX_25L64    ((0xC2 << 16) | 0x2017)
 #define MX_25L128   ((0xC2 << 16) | 0x2018)
@@ -579,6 +582,13 @@ int AT91F_DataflashProbe(int cs, AT91PS_DataflashDesc pDesc)
 		spi_flash_bank[0].sectors = ST_M25P64_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = ST_M25P64_PAGE_NUM;
+		spi_flash_bank[0].page_size = SPI_FLASH_PAGE_SIZE;
+		break;
+	case ST_M25P128:
+	case S25FL128:
+		spi_flash_bank[0].sectors = ST_M25P128_SECTOR_NUM;
+		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
+		spi_flash_bank[0].pages = ST_M25P128_PAGE_NUM;
 		spi_flash_bank[0].page_size = SPI_FLASH_PAGE_SIZE;
 		break;
 	case MX_25L32:
@@ -682,12 +692,12 @@ AT91S_DataFlashStatus AT91F_DataFlashWrite(
 		break;
 	}
 
-	printf("\n");
+	//printf("\n");
 	for (i = start_sector; i <= end_sector; i++) {
 		if (!Spi_Flash_Sector_Erase(0, i * spi_flash_info->sector_size)) {
 			return DATAFLASH_ERROR;
 		}
-		printf("Serial Flash Sector %d Erase OK!\n", i);
+		//printf("Serial Flash Sector %d Erase OK!\n", i);
 	}
 
 	prog_size_left = size;
@@ -704,15 +714,15 @@ AT91S_DataFlashStatus AT91F_DataFlashWrite(
 		}
 		prog_size_left -= prog_size;
 		prog_size_total += prog_size;
-		printf("\r0x%08x        ", prog_size_total);
+		//printf("\r0x%08x        ", prog_size_total);
 	}
-	printf("\n");
+	//printf("\n");
 
 	return DATAFLASH_OK;
 }
 
 //=============================================================================
-flash_info_t flash_info[CFG_MAX_FLASH_BANKS];	/* info for FLASH chips */
+flash_info_t flash_info[CFG_MAX_DATAFLASH_BANKS];	/* info for FLASH chips */
 
 static ulong flash_get_size(vu_long *addr, flash_info_t *info);
 
@@ -721,14 +731,13 @@ unsigned long flash_init(void)
 	unsigned long size;
 	int i;
 
+	Spi_Flash_Initialize(0);
+
 	/* Init: no FLASHes known */
-	for (i = 0; i < CFG_MAX_FLASH_BANKS; ++i)
+	for (i = 0; i < CFG_MAX_DATAFLASH_BANKS; ++i)
 		flash_info[i].flash_id = FLASH_UNKNOWN;
-#ifdef CONFIG_SPI_FLASH_BOOT
-    size = 8 * 1024 * 1024;
-#else
+
 	size = flash_get_size((vu_long *)CFG_SPI_FLASH_BASE, &flash_info[0]);
-#endif
 
 	flash_info[0].size = size;
 
@@ -752,7 +761,7 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 
 	switch ((manufacturer_id << 16) | device_id) {
 	case ST_M25P32:
-		printf("Flash Manufacturer: ST\n");
+		//printf("Flash Manufacturer: ST\n");
 		spi_flash_bank[0].sectors = ST_M25P32_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = ST_M25P32_PAGE_NUM;
@@ -767,7 +776,7 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 		}
 		break;
 	case ST_M25P64:
-		printf("Flash Manufacturer: ST\n");
+		//printf("Flash Manufacturer: ST\n");
 		spi_flash_bank[0].sectors = ST_M25P64_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = ST_M25P64_PAGE_NUM;
@@ -781,8 +790,24 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 			base += 0x10000;
 		}
 		break;
+	case ST_M25P128:
+	case S25FL128:
+		//printf("Flash Manufacturer: ST\n");
+		spi_flash_bank[0].sectors = ST_M25P128_SECTOR_NUM;
+		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
+		spi_flash_bank[0].pages = ST_M25P128_PAGE_NUM;
+		spi_flash_bank[0].page_size = SPI_FLASH_PAGE_SIZE;
+		info->flash_id = FLASH_MAN_STM + ST_M25P128_DEVICE_ID;
+		info->sector_count = 64;
+		info->size = 0x1000000;
+		memset(info->protect, 0, 64);
+		for (i = 0; i < info->sector_count; i++) {
+			info->start[i] = base;
+			base += 0x40000;
+		}
+		break;
 	case MX_25L32:
-		printf("Flash Manufacturer: MX\n");
+		//printf("Flash Manufacturer: MX\n");
 		spi_flash_bank[0].sectors = MX_25L32_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = MX_25L32_PAGE_NUM;
@@ -797,7 +822,7 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 		}
 		break;
 	case MX_25L64:
-		printf("Flash Manufacturer: MX\n");
+		//printf("Flash Manufacturer: MX\n");
 		spi_flash_bank[0].sectors = MX_25L64_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = MX_25L64_PAGE_NUM;
@@ -812,7 +837,7 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 		}
 		break;
 	case MX_25L128:
-		printf("Flash Manufacturer: MX\n");
+		//printf("Flash Manufacturer: MX\n");
 		spi_flash_bank[0].sectors = MX_25L128_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = MX_25L128_PAGE_NUM;
@@ -827,7 +852,7 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 		}
 		break;
 	case EN_25P32:
-		printf("Flash Manufacturer: EON\n");
+		//printf("Flash Manufacturer: EON\n");
 		spi_flash_bank[0].sectors = EN_25P32_SECTOR_NUM;
 		spi_flash_bank[0].sector_size = SPI_FLASH_SECTOR_SIZE;
 		spi_flash_bank[0].pages = EN_25P32_PAGE_NUM;
@@ -842,7 +867,7 @@ static ulong flash_get_size(vu_long *addr, flash_info_t *info)
 		}
 		break;
 	default:
-		printf("Flash Manufacturer: Unknown(0x%lx)\n", manufacturer_id);
+		//printf("Flash Manufacturer: Unknown(0x%lx)\n", manufacturer_id);
 		info->flash_id = FLASH_UNKNOWN;
 		info->sector_count = 0;
 		info->size = 0;
@@ -856,6 +881,7 @@ int flash_erase(flash_info_t *info, int s_first, int s_last)
 {
 	struct spi_flash_info *spi_flash_info = &spi_flash_bank[0];
 	int flag, prot, sect;
+
 
 	if (info->flash_id == FLASH_UNKNOWN) {
 		printf("Can't erase unknown flash type %08lx - aborted\n", info->flash_id);

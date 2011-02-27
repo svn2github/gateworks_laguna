@@ -177,7 +177,7 @@ cpu_init_crit:
 	bl	secondary_cores
 
 primary_core:
-	bl i2c_init
+	bl asm_i2c_init
 
 	/* 
 	 * Initialise memory 
@@ -211,6 +211,7 @@ primary_core:
 	mov r3, #0x51		// EEPROM Device Address
 	mov r4, #0x4A	// EEPROM Offset
 
+#if 1
 	bl i2c_read_byte
 	mov r6, r5
 	mov r3, #0x51		// EEPROM Device Address
@@ -225,8 +226,9 @@ primary_core:
 	add r4, r4, #1
 	bl i2c_read_byte
 	orr r6, r6, r5, lsl #24
-
-	//ldr r6, =0xffffffff
+#else
+	ldr r6, =0xDC0347DF
+#endif
 
 	// This isn't remap
 	ldr r0, =0x77000000

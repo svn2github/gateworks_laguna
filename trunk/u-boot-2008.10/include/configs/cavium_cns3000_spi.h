@@ -64,9 +64,9 @@
 #define CFG_TIMER_RELOAD	0xFFFFFFFF
 #define TIMER_LOAD_VAL		CFG_TIMER_RELOAD
 
-//#define CONFIG_CMDLINE_TAG		1	/* enable passing of ATAGs	*/
-//#define CONFIG_SETUP_MEMORY_TAGS	1
-//#define CONFIG_MISC_INIT_R		1	/* call misc_init_r during start up */
+#define CONFIG_CMDLINE_TAG		1	/* enable passing of ATAGs	*/
+#define CONFIG_SETUP_MEMORY_TAGS	1
+#define CONFIG_MISC_INIT_R
 
 /*
  * Size of malloc() pool
@@ -94,16 +94,33 @@
 
 #define CONFIG_CNS3000_SERIAL
 #define CONFIG_CNS3000_CLOCK	24000000
-#define CONFIG_CNS3000_PORTS	{ (void *)CFG_SERIAL0, (void *)CFG_SERIAL1 }
+#define CONFIG_CNS3000_PORTS	{ (void *)CFG_SERIAL0, (void *)CFG_SERIAL1, (void *)CFG_SERIAL2 }
 #define CONFIG_CONS_INDEX	0
 
-#define CONFIG_BAUDRATE		38400
+#define CONFIG_BAUDRATE		115200
 #define CFG_BAUDRATE_TABLE	{ 2400, 4800, 9600, 19200, 38400, 57600, 115200 }
-
+#define CFG_CONSOLE_INFO_QUIET
 #define CONFIG_CMDLINE_EDITING
 
 /* allow to overwrite serial and ethaddr */
 #define CONFIG_ENV_OVERWRITE
+
+/*
+ * I2C
+ */
+#define CONFIG_DRIVER_CNS3XXX_I2C 
+#define CONFIG_HARD_I2C     /* I2C with hardware support  */
+#undef  CONFIG_SOFT_I2C     /* I2C bit-banged   */
+#define CFG_I2C_SPEED   100000  /* I2C speed and slave address  */
+#define CFG_I2C_SLAVE   0x7f /* UNUSED */
+
+#define CFG_I2C_EEPROM_ADDR 0x50    /* base address */
+#define CFG_I2C_EEPROM_ADDR_LEN 1   /* bytes of address */
+/* mask of address bits that overflow into the "EEPROM chip address"    */
+#define CFG_I2C_EEPROM_ADDR_OVERFLOW  0x07
+#define CFG_EEPROM_PAGE_WRITE_BITS  3 /* 8 byte write page size */
+#define CFG_EEPROM_PAGE_WRITE_DELAY_MS  10  /* and takes up to 10 msec */
+
 
 /*
  * Real Time Clock
@@ -122,18 +139,19 @@
 /*
  * Command line configuration.
  */
-#define CONFIG_CMD_BDI
+#include <config_cmd_default.h>
+#define CONFIG_CMD_ASKENV
+#define CONFIG_CMD_DIAG
+//#define CONFIG_CMD_EEPROM
+#define CONFIG_CMD_JFFS2
 #define CONFIG_CMD_DHCP
-#define CONFIG_CMD_ENV
-#define CONFIG_CMD_FLASH
-#define CONFIG_CMD_IMI
-#define CONFIG_CMD_MEMORY
-#define CONFIG_CMD_NET
 #define CONFIG_CMD_PING
-#define CONFIG_CMD_LOADB
 #define CONFIG_CMD_CACHE
 #define CONFIG_CMD_ELF
-#define CONFIG_CMD_RUN
+#define CONFIG_CMD_I2C
+#define CONFIG_CMD_SAVES
+#undef CONFIG_CMD_FPGA
+#undef CONFIG_CMD_SETGETDCR
 
 #ifdef CONFIG_RTC_CNS3000
 #define CONFIG_CMD_DATE
@@ -161,23 +179,28 @@ The kernel command line & boot command below are for a Cavium Networks CNS3000 b
 0x0000????  Root File System
 */
 
-#define CONFIG_BOOTARGS "root=/dev/mtdblock0 mem=256M console=ttyS0"
-#define CONFIG_BOOTCOMMAND "cp 0x10040000 0x100000 0x100000; bootm"
+#define CONFIG_BOOTARGS "console=ttyS0,115200 root=/dev/mtdblock3 rootfstype=squashfs,jffs2 noinitrd init=/etc/preinit"
+#define CONFIG_BOOTCOMMAND "bootm 0x10060000"
+
+#define CONFIG_NET_MULTI
+#define CONFIG_HAS_ETH1
+#define CONFIG_HAS_ETH2
+#define CONFIG_HAS_ETH3
+
+#define ENV_ETH_PRIME     "eth0"
 
 /*
  * Static configuration when assigning fixed address
  */
-#define CONFIG_ETHADDR		00:53:43:4F:54:54
 #define CONFIG_NETMASK		255.255.0.0		/* talk on MY local net */
-#define CONFIG_IPADDR		172.20.5.230		/* static IP I currently own */
-#define CONFIG_SERVERIP		172.20.5.200		/* current IP of my dev pc */
-#define CONFIG_BOOTFILE		"/tftpboot/uImage"	/* file to load */
+#define CONFIG_IPADDR			192.168.1.211		/* static IP I currently own */
+#define CONFIG_SERVERIP		192.168.1.14		/* current IP of my dev pc */
 
 /*
  * Miscellaneous configurable options
  */
 #define CFG_LONGHELP				/* undef to save memory		 */
-#define CFG_PROMPT		"CNS3000 # "
+#define CFG_PROMPT		"Laguna > "
 #define CFG_CBSIZE		256		/* Console I/O Buffer Size	*/
 /* Print Buffer Size */
 #define CFG_PBSIZE		(CFG_CBSIZE+sizeof(CFG_PROMPT)+16)
@@ -201,21 +224,17 @@ The kernel command line & boot command below are for a Cavium Networks CNS3000 b
 /*-----------------------------------------------------------------------
  * Physical Memory Map
  */
-#undef PHYS_SDRAM_32BIT					/* undefined: 16 bits, defined: 32 bits */
-//#define PHYS_SDRAM_16BIT_512					/* undefined: 16 bits, defined: 32 bits */
+#define PHYS_SDRAM_32BIT					/* undefined: 16 bits, defined: 32 bits */
+// #undef PHYS_SDRAM_32BIT					/* undefined: 16 bits, defined: 32 bits */
 
 #define CONFIG_NR_DRAM_BANKS		1		/* we have 1 bank of DRAM */
 #define PHYS_SDRAM_1		       	0x00000000	/* SDRAM Bank #1 */
 
 #ifdef PHYS_SDRAM_32BIT
-#define PHYS_SDRAM_1_SIZE		0x10000000	/* 0x10000000 = 256 MB */
-#elif defined (PHYS_SDRAM_16BIT_512)
-#define PHYS_SDRAM_1_SIZE		0x04000000	/* 0x08000000 = 64 MB */
+#define PHYS_SDRAM_1_SIZE		0x4000000	/* 0x10000000 = 256 MB */
 #else
 #define PHYS_SDRAM_1_SIZE		0x08000000	/* 0x08000000 = 128 MB */
 #endif
-
-#define CFG_MONITOR_BASE		TEXT_BASE
 
 /*-----------------------------------------------------------------------
  * FLASH and environment organization
@@ -223,114 +242,30 @@ The kernel command line & boot command below are for a Cavium Networks CNS3000 b
 /*
  *  Use the CFI flash driver for ease of use
  */
-#define CFG_FLASH_BASE			0x10000000
+#define PHYS_FLASH_1						0x60000000
 
-#define CFG_FLASH_CFI			1
-#define CONFIG_FLASH_CFI_DRIVER		1
-#define CONFIG_FLASH_SHOW_PROGRESS	45			/* count down from 45/5: 9..1 */
-#define CFG_FLASH_CFI_WIDTH		FLASH_CFI_16BIT
-#define CONFIG_FLASH_CFI_LEGACY
+#define CFG_FLASH_BASE			PHYS_FLASH_1
+#define CFG_MONITOR_BASE		CFG_MONITOR_BASE
+#define CFG_MONITOR_LEN			(256 << 10)
 
-//#define CFG_FLASH_LEGACY_8MiBx8
-#define CFG_FLASH_LEGACY_128MiBx16
+#define CFG_MAX_FLASH_BANKS     1       /* max number of memory banks           */
+#define CFG_MAX_FLASH_SECT      64 /* max number of sectors on one chip    */
 
-#define CFG_MAX_FLASH_BANKS		1			/* max number of memory banks */
+#define CONFIG_ENV_IS_IN_DATAFLASH  1
 
-#if defined(CFG_FLASH_LEGACY_8MiBx8)
-	#define PHYS_FLASH_SIZE			0x00800000		/* 8MB */
-	#define CFG_MAX_FLASH_SECT		135			/* 135 max number of sectors on one chip */
-#elif defined(CFG_FLASH_LEGACY_128MiBx16)
-	#define PHYS_FLASH_SIZE			0x08000000      /* 128MB */
-	#define CFG_MAX_FLASH_SECT		1024            /* 1024 max number of sectors on one chip */
-#else
-	#define PHYS_FLASH_SIZE			0x08000000      /* 128MB */
-	#define CFG_MAX_FLASH_SECT		1024            /* 1024 max number of sectors on one chip */
-#endif
+#define CONFIG_ENV_SECT_SIZE  0x40000 /* size of one complete sector  */
+#define CONFIG_ENV_ADDR   (PHYS_FLASH_1 + 0x40000)
+#define CONFIG_ENV_SIZE   0x40000  /* Total Size of Environment Sector */
 
-/* timeout values are in ticks */
-#define CFG_FLASH_ERASE_TOUT		(5 * CFG_HZ)		/* Timeout for Flash Erase */
-#define CFG_FLASH_WRITE_TOUT		(5 * CFG_HZ)		/* Timeout for Flash Write */
+#define CONFIG_HAS_DATAFLASH 1
+#define CONFIG_SPI_FLASH_BOOT 1
 
-#define CFG_FLASH_EMPTY_INFO		1			/* flinfo indicates empty blocks */
+#define CFG_SPI_FLASH_BASE    0x60000000
 
-/*
- * SPI serial flash (dataflash) (Base Address: 0x60000000)
- */
-#define CONFIG_SPI_FLASH_BOOT       1
-#define CONFIG_SPI          1
+#define CFG_MAX_DATAFLASH_BANKS   1
+#define CFG_DATAFLASH_LOGIC_ADDR_CS0  CFG_SPI_FLASH_BASE  /* Logical adress for CS0 */
 
-#define CFG_SPI_FLASH_BASE		0x60000000
-
-#define CFG_MAX_DATAFLASH_BANKS		1
-#define CFG_DATAFLASH_LOGIC_ADDR_CS0	CFG_SPI_FLASH_BASE	/* Logical adress for CS0 */
-
-/* environment data, spi dataflash only. */
-#ifdef CONFIG_SPI_FLASH_BOOT
-	#define CONFIG_ENV_IS_IN_DATAFLASH  1
-	#undef CONFIG_ENV_OFFSET
-	#undef CONFIG_ENV_ADDR
-	#undef CONFIG_ENV_SIZE
-	#define CONFIG_ENV_OFFSET       0x30000     /* the offset of u-boot environment on dataflash */
-	#define CONFIG_ENV_ADDR         (CFG_DATAFLASH_LOGIC_ADDR_CS0 + CONFIG_ENV_OFFSET) /* the address of environment */
-	#define CONFIG_ENV_SIZE         0x1000      /* Total Size of Environment Sector */
-
-	#define CONFIG_KERNEL_OFFSET        0x40000     /* the offset of bootpImage on dataflash */
-	#define CONFIG_KERNEL_END       0x7FFFFF    /* the end of bootpImage on dataflash */
-	#undef CFG_MAX_FLASH_SECT
-	#define CFG_MAX_FLASH_SECT		135			/* 135 max number of sectors on one chip */
-#endif
-
-#ifdef CONFIG_ENV_IS_IN_DATAFLASH
-
-	#undef CFG_FLASH_CFI
-	#undef CONFIG_FLASH_CFI_DRIVER
-	#undef CONFIG_FLASH_CFI_LEGACY
-	#undef CFG_FLASH_LEGACY_8MiBx8
-	#undef CFG_FLASH_LEGACY_128MiBx16
-
-	#define CONFIG_HAS_DATAFLASH		1
-
-	#define CONFIG_ENV_SIZE			0x1000			/* Total Size of Environment Sector */
-	#define CONFIG_ENV_OFFSET		0x30000			/* the offset of u-boot environment on dataflash */
-	#define CONFIG_ENV_ADDR			(CFG_DATAFLASH_LOGIC_ADDR_CS0 + CONFIG_ENV_OFFSET) /* the address of environment */
-
-	#define CONFIG_KERNEL_OFFSET		0x40000			/* the offset of bootpImage on dataflash */
-	#define	CONFIG_KERNEL_END		0x7FFFFF		/* the end of bootpImage on dataflash */
-#else
-	#define CONFIG_ENV_IS_IN_FLASH		1
-	#define CONFIG_ENV_SIZE			0x2000
-	#define CONFIG_ENV_OFFSET		(PHYS_FLASH_SIZE - CONFIG_ENV_SIZE)
-	#define CONFIG_ENV_ADDR			(CFG_FLASH_BASE + CONFIG_ENV_OFFSET)
-#endif /* CONFIG_ENV_IS_IN_DATAFLASH */
-
-#ifdef CONFIG_SPI_FLASH_BOOT
-#undef CONFIG_BOOTCOMMAND
-//#define CONFIG_BOOTCOMMAND		"go 0x1000000"
-#endif /* CONFIG_SPI_FLASH_BOOT */
-
-// If FPGA, force some actions
-//#define CONFIG_CNS3000_FPGA
-
-// Warning: Seems has memory leak issue, it might be u-boot bug. 
-// Need to check again.
-//#define CONFIG_AHCI_CNS3000
-
-#ifdef CONFIG_AHCI_CNS3000
-#define CONFIG_CMD_SCSI
-#define CONFIG_CMD_EXT2
-#define CONFIG_CMD_PCI
-//#define CONFIG_SCSI_AHCI
-#define CONFIG_DOS_PARTITION
-
-// Ignore compile error
-#define CONFIG_SATA_ULI5288
-
-#define CFG_SCSI_MAX_SCSI_ID    2
-#define CFG_SCSI_MAX_LUN        2
-#define CFG_SCSI_MAX_DEVICE     (CFG_SCSI_MAX_SCSI_ID * CFG_SCSI_MAX_LUN)
-#define CFG_SCSI_MAXDEVICE      CFG_SCSI_MAX_DEVICE
-#endif
-
+#define CONFIG_SPI 1
 
 
 #endif /* __CONFIG_H */

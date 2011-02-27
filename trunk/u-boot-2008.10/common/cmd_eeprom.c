@@ -79,7 +79,8 @@ int do_eeprom ( cmd_tbl_t * cmdtp, int flag, int argc, char *argv[])
 		ulong cnt  = simple_strtoul (argv[4], NULL, 16);
 #endif /* CFG_I2C_MULTI_EEPROMS */
 
-# ifndef CONFIG_SPI
+#if 1
+//# ifndef CONFIG_SPI
 		eeprom_init ();
 # endif /* !CONFIG_SPI */
 
@@ -118,7 +119,8 @@ int do_eeprom ( cmd_tbl_t * cmdtp, int flag, int argc, char *argv[])
  *   0x00000nxx for EEPROM address selectors and page number at n.
  */
 
-#ifndef CONFIG_SPI
+#if 1
+//#ifndef CONFIG_SPI
 #if !defined(CFG_I2C_EEPROM_ADDR_LEN) || CFG_I2C_EEPROM_ADDR_LEN < 1 || CFG_I2C_EEPROM_ADDR_LEN > 2
 #error CFG_I2C_EEPROM_ADDR_LEN must be 1 or 2
 #endif
@@ -176,7 +178,8 @@ int eeprom_read (unsigned dev_addr, unsigned offset, uchar *buffer, unsigned cnt
 			len = maxlen;
 #endif
 
-#ifdef CONFIG_SPI
+#if 0
+//#ifdef CONFIG_SPI
 		spi_read (addr, alen, buffer, len);
 #else
 		if (i2c_read (addr[0], offset, alen-1, buffer, len) != 0)
@@ -272,7 +275,8 @@ int eeprom_write (unsigned dev_addr, unsigned offset, uchar *buffer, unsigned cn
 			len = maxlen;
 #endif
 
-#ifdef CONFIG_SPI
+#if 0
+//#ifdef CONFIG_SPI
 		spi_write (addr, alen, buffer, len);
 #else
 #if defined(CFG_EEPROM_X40430)
@@ -374,7 +378,8 @@ int eeprom_write (unsigned dev_addr, unsigned offset, uchar *buffer, unsigned cn
 	return rcode;
 }
 
-#ifndef CONFIG_SPI
+#if 1
+//#ifndef CONFIG_SPI
 int
 eeprom_probe (unsigned dev_addr, unsigned offset)
 {
@@ -408,7 +413,7 @@ eeprom_probe (unsigned dev_addr, unsigned offset)
 void eeprom_init  (void)
 {
 #if defined(CONFIG_SPI)
-	spi_init_f ();
+	//spi_init_f ();
 #endif
 #if defined(CONFIG_HARD_I2C) || \
     defined(CONFIG_SOFT_I2C)

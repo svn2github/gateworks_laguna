@@ -3500,7 +3500,7 @@ Index: backfire/target/linux/cns3xxx/patches-2.6.31/100-cns3xxx_support.patch
 ++#endif
 ++
 ++	dmac_init();
-++	cns_rdma_init();
+++	//cns_rdma_init();
 ++
 ++	platform_device_register(&cns3xxx_gpio);
 ++	platform_device_register(&cns3xxx_watchdog_device);

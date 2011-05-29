@@ -1,17 +1,17 @@
-Index: backfire/include/image.mk
+Index: trunk-2.6.39/include/image.mk
 ===================================================================
---- backfire/include/image.mk	(revision 25795)
-+++ backfire/include/image.mk	(working copy)
-@@ -36,7 +36,7 @@
-   SQUASHFS_OPTS  := -comp lzma -processors 1
- endif
- 
--JFFS2_BLOCKSIZE ?= 64k 128k
-+JFFS2_BLOCKSIZE ?= 64k 128k 256k
- 
- define add_jffs2_mark
+--- trunk-2.6.39/include/image.mk	(revision 27017)
++++ trunk-2.6.39/include/image.mk	(working copy)
+@@ -56,7 +56,7 @@
  	echo -ne '\xde\xad\xc0\xde' >> $(1)
-@@ -50,7 +50,9 @@
+ endef
+ 
+-# pad to 4k, 8k, 64k, 128k and add jffs2 end-of-filesystem mark
++# pad to 4k, 8k, 64k, 128k, 256k and add jffs2 end-of-filesystem mark
+ define prepare_generic_squashfs
+ 	dd if=$(1) of=$(KDIR)/tmpfile.0 bs=4k conv=sync
+ 	$(call add_jffs2_mark,$(KDIR)/tmpfile.0)
+@@ -64,7 +64,9 @@
  	$(call add_jffs2_mark,$(KDIR)/tmpfile.1)
  	dd if=$(KDIR)/tmpfile.1 of=$(KDIR)/tmpfile.2 bs=64k conv=sync
  	$(call add_jffs2_mark,$(KDIR)/tmpfile.2)
@@ -22,16 +22,3 @@ Index: backfire/include/image.mk
  	$(call add_jffs2_mark,$(1))
  	rm -f $(KDIR)/tmpfile.*
  endef
-Index: backfire/include/download.mk
-===================================================================
---- backfire/include/download.mk	(revision 25795)
-+++ backfire/include/download.mk	(working copy)
-@@ -88,7 +88,7 @@
- 		rm -rf $(SUBDIR) && \
- 		[ \! -d $(SUBDIR) ] && \
- 		git clone $(URL) $(SUBDIR) && \
--		(cd $(SUBDIR) && git checkout $(VERSION)) && \
-+		(cd $(SUBDIR) && git checkout -b $(SUBDIR) $(VERSION)) && \
- 		echo "Packing checkout..." && \
- 		rm -rf $(SUBDIR)/.git && \
- 		$(call dl_pack,$(TMP_DIR)/dl/$(FILE),$(SUBDIR)) && \

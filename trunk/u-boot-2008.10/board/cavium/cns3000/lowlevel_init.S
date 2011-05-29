@@ -242,11 +242,13 @@ lowlevel_init:
 ddr2_sdram_ctrl_init:
 	mov r13, lr
 
+	/* R6 - SDRAM Size */
   mov r3, #0x51   // EEPROM Device Address
   mov r4, #0x2b // EEPROM Offset
   bl i2c_read_byte
 	mov r6, r5
 
+	/* R5 - SDRAM width */
   mov r3, #0x51   // EEPROM Device Address
   mov r4, #0x2d // EEPROM Offset
   bl i2c_read_byte
@@ -327,7 +329,7 @@ ddr2_sdram_ctrl_init:
 
 	ldr r1, =0x0006E552
 	str r1, [r0, #0x428]
-	
+
 	ldr r1, =0x0006E550
 	str r1, [r0, #0x428]
 
@@ -340,9 +342,15 @@ ddr2_sdram_ctrl_init:
 	/* Set CAS Latency = 4 * mclk */
 	ldr	r1, =0x0000000C
 	str r1, [r0, #DMC_CAS_LATENCY_OFFSET]   /* 0x014 */
-	
+
+	/* R6 - SDRAM Size */
+	/* R5 - SDRAM width */
+
 	mov r1, #0x4
+
 	cmp r5, #0x2
+	orreq r1, r1, #0x40
+	cmp r5, #0x20
 	orreq r1, r1, #0x40
 	cmp r6, #0x4
 	orreq r1, r1, #0x30

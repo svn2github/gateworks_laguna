@@ -318,8 +318,12 @@ int cns3xxx_config_VSC8601(u8 mac_port, u8 phy_addr)
         phy_data |=  (0x3 << 10); //set 16KB
 #endif
 
+	//PHY_AUTO_ADDR_REG |= 0xc0000000;
+
 	cns3xxx_write_phy(phy_addr, 0x18, 0xf1e7);
+	//cns3xxx_write_phy(phy_addr, 0x18, 0x4400);
 	cns3xxx_write_phy(phy_addr, 0x1c, 0x8e00);
+	//cns3xxx_write_phy(phy_addr, 0x10, 0x21);
 	cns3xxx_write_phy(phy_addr, 0x10, 0x20);
 	cns3xxx_write_phy(phy_addr, 0x1c, 0xa41f);
 	cns3xxx_write_phy(phy_addr, 0x1c, 0xb41a);

@@ -503,10 +503,10 @@ Index: trunk-2.6.39/target/linux/cns3xxx/patches/100-laguna_support.patch
 ===================================================================
 --- trunk-2.6.39/target/linux/cns3xxx/patches/100-laguna_support.patch	(revision 0)
 +++ trunk-2.6.39/target/linux/cns3xxx/patches/100-laguna_support.patch	(revision 0)
-@@ -0,0 +1,902 @@
+@@ -0,0 +1,903 @@
 +--- /dev/null
 ++++ b/arch/arm/mach-cns3xxx/laguna.c
-+@@ -0,0 +1,670 @@
++@@ -0,0 +1,671 @@
 ++/*
 ++ * Gateworks Corporation Laguna Platform
 ++ *
@@ -1159,7 +1159,8 @@ Index: trunk-2.6.39/target/linux/cns3xxx/patches/100-laguna_support.patch
 ++			platform_device_register(&laguna_gpio_leds_device);
 ++		} else if (strncmp(laguna_info.model, "GW2380", 6) == 0) {
 ++			laguna_gpio_leds[0].gpio = 107;
-++			laguna_gpio_leds_data.num_leds = 1;
+++			laguna_gpio_leds[1].gpio = 106;
+++			laguna_gpio_leds_data.num_leds = 2;
 ++			platform_device_register(&laguna_gpio_leds_device);
 ++		}
 ++	} else {
@@ -1379,8 +1380,8 @@ Index: trunk-2.6.39/target/linux/cns3xxx/patches/100-laguna_support.patch
 ++
 + 		iotable_init(cns3xxx_pcie[i].cfg_bases,
 + 			     ARRAY_SIZE(cns3xxx_pcie[i].cfg_bases));
-+ 		cns3xxx_pwr_clk_en(0x1 << PM_CLK_GATE_REG_OFFSET_PCIE(i));
-+@@ -386,4 +389,3 @@ static int __init cns3xxx_pcie_init(void
++ 		cns3xxx_pcie_check_link(&cns3xxx_pcie[i]);
++@@ -384,4 +387,3 @@ static int __init cns3xxx_pcie_init(void
 + 
 + 	return 0;
 + }

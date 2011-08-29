@@ -15,19 +15,19 @@ before proceeding.
 1. Download OpenWrt Trunk Release to development directory
 
 # cd /usr/src
-# svn co svn://svn.openwrt.org/openwrt/trunk@27017
+# svn co svn://svn.openwrt.org/openwrt/trunk@27590 trunk
 
 
-2. Download Gateworks OpenWrt Patches
+2. Download Gateworks Generic OpenWrt Patches
 
 # cd /usr/src
-# svn co http://svn.gateworks.com/bsp/laguna/trunk/openwrt_patches
+# svn co http://svn.gateworks.com/bsp/generic/trunk generic_patches
 
 
 3. Apply Gateworks Patches to OpenWrt Tree
 
 # /usr/src/trunk/scripts/patch-kernel.sh /usr/src/trunk \
-/usr/src/openwrt_patches/patches/base
+/usr/src/generic_patches
 
 4. Download OpenWrt Packages
 
@@ -65,49 +65,44 @@ files for the development tree.
 9. Connect your Laguna Platform to your network, set ipaddress and serverip in uboot
 
 <boot the board and hit a key to enter into u-boot prompt>
-# sete ipaddr <localip>
-# sete serverip <serverip>
+Laguna> sete ipaddr <localip>
+Laguna> sete serverip <serverip>
 
 i.e. Set localip to 192.168.1.211 and serverip to 192.168.1.14
 
-# sete ipaddr 192.168.1.211
-# sete serverip 192.168.1.14
+Laguna> sete ipaddr 192.168.1.211
+Laguna> sete serverip 192.168.1.14
 
 
-10. GW2388-x: Erase what is on the board currently (once executed the linux fs and kernel will be lost)
+10. Erase what is on the board currently (once executed the linux fs and kernel will be lost)
 
-# erase 0x10060000 0x10ffffff
+	-- GW2388 --
+	Laguna> erase 0x10060000 0x10ffffff
 
-10. GW2380: Erase what is on the board currently (once executed the linux fs and kernel will be lost)
+	-- GW2380 --
+	Laguna> erase 0x60080000 0x60ffffff
 
-# erase 0x80080000 0x60ffffff
+11. Copy Linux Kernel to the Board
+	-- GW2388 --
+	Laguna> tftpboot 0x800000 laguna/uImage
+	Laguna> cp.b 0x800000 0x10060000 $(filesize)
 
+	-- GW2380 --
+	Laguna> tftpboot 0x800000 laguna/uImage
+	Laguna> cp.b 0x800000 0x60080000 $(filesize)
 
-11. GW2388-x: Copy Linux Kernel to the Board
+12. Copy rootfs to the Board
+	-- GW2388 --
+	Laguna> tftpboot 0x800000 laguna/rootfs
+	Laguna> cp.b 0x800000 0x10260000 $(filesize)
 
-# tftpboot 0x800000 laguna/uImage
-# cp.b 0x800000 0x10060000 $(filesize)
-
-11. GW2380: Copy Linux Kernel to the Board
-
-# tftpboot 0x800000 laguna/uImage
-# cp.b 0x800000 0x60080000 $(filesize)
-
-
-12. GW2388-x: Copy rootfs to the Board
-
-# tftpboot 0x800000 laguna/rootfs
-# cp.b 0x800000 0x10260000 $(filesize)
-
-12. GW2380: Copy rootfs to the Board
-
-# tftpboot 0x800000 laguna/rootfs
-# cp.b 0x800000 0x60200000 $(filesize)
-
+	-- GW2380 --
+	Laguna> tftpboot 0x800000 laguna/rootfs
+	Laguna> cp.b 0x800000 0x60280000 $(filesize)
 
 13. Boot into Linux
 
-# boot
+Laguna> boot
 
 
 If no changes have been made to the default environment variables, you board

@@ -162,20 +162,21 @@ i2c_read_byte:
 secondary_cores:
 	mov	r12, lr
 
-2:
 	/* Have we already remapped. */
 	ldr	r8, =CNS3000_VEGA_MISC_BASE
 	ldr	r6, [r8, #0x00]
-	and	r6, r6, #0x01	
+	and	r6, r6, #0x01
 
 	tst	r6, #0x01
-	bne	2b
+	beq 2f
+	mov pc, #0x10000000
 
+2:
         /* Enable software interrupt */
 	ldr	r5, =CNS3000_TC11MP_GIC_CPU_BASE
-	mov	r6, #0x00
+	mov	r6, #0x01
 	str	r6, [r5, #GIC_CPU_CTRL_OFFSET]
-	mov	r6, #0x00
+	mov	r6, #0xF0
 	str	r6, [r5, #GIC_CPU_PRIMASK_OFFSET]
 
 	/* Read core number into r0 */
@@ -354,6 +355,8 @@ ddr2_sdram_ctrl_init:
 	orreq r1, r1, #0x40
 	cmp r6, #0x4
 	orreq r1, r1, #0x30
+	cmp r6, #0x5
+	orreq r1, r1, #0x30
 	str r1, [r0, #DMC_MEMORY_CFG2_OFFSET]   /* 0x04C */
 
         /* Set request memory for LCD high priority */
@@ -363,7 +366,8 @@ ddr2_sdram_ctrl_init:
 	/* Set t_mrd = 2 * mclk */
 	ldr	r1, =0x00000002
 	str r1, [r0, #DMC_T_MRD_OFFSET]     /* 0x01C */
-		
+
+	mov r1, r6
 	ldr	r5, =CNS3000_VEGA_MISC_BASE
 	ldr	r6, [r5, #0x04]
 	and	r6, r6, #0x600
@@ -381,6 +385,7 @@ ddr2_sdram_ctrl_init:
 	beq	ddr_400	
 
 ddr_200:
+	mov r6, r1
 	/* Set t_ras = 13 * mclk */
 	ldr	r1, =0x00000009
 	str r1, [r0, #DMC_T_RAS_OFFSET]     /* 0x020 */
@@ -455,6 +460,7 @@ ddr_266:
 	b ddr_clock_end
 
 ddr_333:
+	mov r6, r1
 	/* Set t_ras = 13 * mclk */
 	ldr	r1, =0x0000000E
 	str r1, [r0, #DMC_T_RAS_OFFSET]     /* 0x020 */
@@ -492,6 +498,8 @@ ddr_333:
 	b ddr_clock_end
 
 ddr_400:
+	mov r6, r1
+
 	/* Set t_ras = 13 * mclk */
 	ldr	r1, =0x00000012 
 	str r1, [r0, #DMC_T_RAS_OFFSET]     /* 0x020 */
@@ -541,7 +549,9 @@ ddr_clock_end:
 	str r1, [r0, #DMC_T_ESR_OFFSET]     /* 0x048 */
 
 	/* */
-	ldr r1, =0x00014012
+	cmp r6, #0x5
+	ldreq r1, =0x0001401A
+	ldrne r1, =0x00014012
 	str r1, [r0, #0x00C]            /* */
 
 	/* */

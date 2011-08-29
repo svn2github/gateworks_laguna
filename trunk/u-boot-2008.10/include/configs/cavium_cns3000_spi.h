@@ -228,7 +228,7 @@ The kernel command line & boot command below are for a Cavium Networks CNS3000 b
 // #undef PHYS_SDRAM_32BIT					/* undefined: 16 bits, defined: 32 bits */
 
 #define CONFIG_NR_DRAM_BANKS		1		/* we have 1 bank of DRAM */
-#define PHYS_SDRAM_1		       	0x00000000	/* SDRAM Bank #1 */
+#define PHYS_SDRAM_1		       	0x20000000	/* SDRAM Bank #1 */
 
 #ifdef PHYS_SDRAM_32BIT
 #define PHYS_SDRAM_1_SIZE		0x4000000	/* 0x10000000 = 256 MB */

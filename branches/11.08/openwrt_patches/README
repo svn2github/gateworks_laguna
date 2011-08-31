@@ -1,0 +1,121 @@
+Building OpenWrt for the Gateworks Laguna Platform
+-----------------------------------------------------------
+
+In order to build OpenWRT for the Gateworks Laguna you will need the patches
+in this directory and the Trunk release of the OpenWrt development tree.
+Once the Openwrt tree has been downloaded, the patches will need to be
+applied to it. A step-by-step instruction along with command is given below.
+Before proceeding please read prerequisites section on the OpenWrt howto 
+build wiki page located here:
+http://wiki.openwrt.org/doc/howto/build
+Please ensure your development box has all of the listed packages installed
+before proceeding.
+
+
+1. Download OpenWrt Trunk Release to development directory
+
+# cd /usr/src
+# svn co svn://svn.openwrt.org/openwrt/trunk@27590 trunk
+
+
+2. Download Gateworks Generic OpenWrt Patches
+
+# cd /usr/src
+# svn co http://svn.gateworks.com/bsp/generic/trunk generic_patches
+
+
+3. Apply Gateworks Patches to OpenWrt Tree
+
+# /usr/src/trunk/scripts/patch-kernel.sh /usr/src/trunk \
+/usr/src/generic_patches
+
+4. Download OpenWrt Packages
+
+# cd /usr/src/trunk
+# make package/symlinks
+
+
+5. Add Packages (or not)
+-- NOTE --
+It is "strongly" suggested that no changes are made the first time
+you build this directory in order to have the same results as Gateworks.
+When finished editing exit and SAVE
+
+# make menuconfig
+
+
+6. Make
+
+# make V=99
+
+
+7. Now go get coffee while the kernel and filesystem is downloaded and built
+-- NOTE --
+Your development box will need access to the internet in order to download the
+files for the development tree.
+
+
+8. Copy the binaries to a tftp server
+
+#mkdir /tftpboot/laguna
+# cp /usr/src/trunk/bin/cns3xxx/openwrt-cns3xxx-uImage /tftpboot/laguna/uImage
+# cp /usr/src/trunk/bin/cns3xxx/openwrt-cns3xxx-squashfs.img /tftpboot/laguna/rootfs
+
+
+9. Connect your Laguna Platform to your network, set ipaddress and serverip in uboot
+
+<boot the board and hit a key to enter into u-boot prompt>
+Laguna> sete ipaddr <localip>
+Laguna> sete serverip <serverip>
+
+i.e. Set localip to 192.168.1.211 and serverip to 192.168.1.14
+
+Laguna> sete ipaddr 192.168.1.211
+Laguna> sete serverip 192.168.1.14
+
+
+10. Erase what is on the board currently (once executed the linux fs and kernel will be lost)
+
+	-- GW2388 --
+	Laguna> erase 0x10060000 0x10ffffff
+
+	-- GW2380 --
+	Laguna> erase 0x60080000 0x60ffffff
+
+11. Copy Linux Kernel to the Board
+	-- GW2388 --
+	Laguna> tftpboot 0x800000 laguna/uImage
+	Laguna> cp.b 0x800000 0x10060000 $(filesize)
+
+	-- GW2380 --
+	Laguna> tftpboot 0x800000 laguna/uImage
+	Laguna> cp.b 0x800000 0x60080000 $(filesize)
+
+12. Copy rootfs to the Board
+	-- GW2388 --
+	Laguna> tftpboot 0x800000 laguna/rootfs
+	Laguna> cp.b 0x800000 0x10260000 $(filesize)
+
+	-- GW2380 --
+	Laguna> tftpboot 0x800000 laguna/rootfs
+	Laguna> cp.b 0x800000 0x60280000 $(filesize)
+
+13. Boot into Linux
+
+Laguna> boot
+
+
+If no changes have been made to the default environment variables, you board
+will boot to a linux prompt on your newly built kernel/filesystem. If you
+wish, return to step 5 to add/remove packages that you wish to have on your
+product.
+
+If there are any question/concerns or you would like to contribute to the
+development of the Laguna Platform a mailing list has been setup and you can
+view more information here: 
+http://lists.gateworks.com/cgi-bin/mailman/listinfo/laguna
+
+A trac project is also available along with a publicly editable wiki at:
+http://trac.gateworks.com/
+
+

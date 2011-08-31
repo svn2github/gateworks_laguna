@@ -21,7 +21,7 @@ before proceeding.
 2. Download Gateworks Generic OpenWrt Patches
 
 # cd /usr/src
-# svn co http://svn.gateworks.com/bsp/generic/trunk generic_patches
+# svn co http://svn.gateworks.com/bsp/generic/branches/11.08 generic_patches
 
 
 3. Apply Gateworks Patches to OpenWrt Tree

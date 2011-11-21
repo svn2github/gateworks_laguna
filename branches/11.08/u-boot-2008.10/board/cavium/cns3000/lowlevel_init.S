@@ -154,6 +154,11 @@ i2c_read_byte:
 	ldr r5, [r0, #0x30]
 	and r5, r5, #0xff
 
+	nop
+	nop
+	nop
+	nop
+
 	mov r3, r10
 	mov lr, r11
 	mov pc, lr

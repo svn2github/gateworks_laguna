@@ -590,6 +590,8 @@ static int cns3xxx_eth_halt(struct eth_device *dev)
 		enable_port(priv->port, 0);
 		priv->dev_init = 0;
 		cns_dev->which_port = -1;
+		enable_rx_dma(0, 0);
+		enable_port(3, 0);
 	}
 	return 0;
 }
@@ -606,6 +608,10 @@ static int cns3xxx_eth_init(struct eth_device *dev, bd_t *p)
 	}
 
 	enable_port(priv->port, 1);
+
+	enable_rx_dma(0, 1);
+	enable_port(3, 1);
+
 	priv->dev_init = 1;
 	cns_dev->which_port = priv->port;
 
@@ -644,10 +650,10 @@ int cns3xxx_eth_initialize( bd_t *bis)
 
 	// start tx/rx DMA operation
 	//enable_tx_dma(0, 1);
-	enable_rx_dma(0, 1);
+	//enable_rx_dma(0, 1);
 
 	// Enable the CPU Port
-	enable_port(3, 1);
+	//enable_port(3, 1);
 
 	for (port = 0; port < 3; port++)
 	{

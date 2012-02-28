@@ -212,7 +212,7 @@ primary_core:
 	mov r4, #0x4A	// EEPROM Offset
 
 #if 1
-	bl i2c_read_byte
+	bl i2c_read_byte // returns val in r5
 	mov r6, r5
 	mov r3, #0x51		// EEPROM Device Address
 	add r4, r4, #1
@@ -236,7 +236,7 @@ primary_core:
 	//mov r1, #0xffffffff
 	str r6, [r0]
 
-	orr r6, r6, #0x30000000
+	orr r6, r6, #0x30000000 // CPU0/CPU1 active must be set
 
 	// This isn't remap
 	ldr r0, =0x77000004

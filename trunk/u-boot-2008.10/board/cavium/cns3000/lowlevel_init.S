@@ -248,13 +248,13 @@ lowlevel_init:
 ddr2_sdram_ctrl_init:
 	mov r13, lr
 
-	/* R6 - SDRAM Size */
+	/* R6 - SDRAM Size (1=32MB, 2=64MB, 3=128MB, 4=256MB, 5=512MB) */
   mov r3, #0x51   // EEPROM Device Address
   mov r4, #0x2b // EEPROM Offset
   bl i2c_read_byte
 	mov r6, r5
 
-	/* R5 - SDRAM width */
+	/* R5 - SDRAM width (1=16bit 2=32bit=2x16bit parts) */
   mov r3, #0x51   // EEPROM Device Address
   mov r4, #0x2d // EEPROM Offset
   bl i2c_read_byte
@@ -349,19 +349,33 @@ ddr2_sdram_ctrl_init:
 	ldr	r1, =0x0000000C
 	str r1, [r0, #DMC_CAS_LATENCY_OFFSET]   /* 0x014 */
 
-	/* R6 - SDRAM Size */
-	/* R5 - SDRAM width */
+	/* Memory Size/Width config */
+	/* R6 - SDRAM Size (1=32MB, 2=64MB, 3=128MB, 4=256MB, 5=512MB) */
+	/* R5 - SDRAM width (1=16bit 2=32bit=2x16bit parts) */
 
-	mov r1, #0x4
+	mov r1, #0x4 /* default: dqm_init, 16-bit, bank-bits=2 (4banks) */
+	cmp r5, #0x2        /* 32bit */
+	beq	ddr_width_32
+	cmp r5, #0x20       /* 32bit (previous config value for 32bit) */
+	beq	ddr_width_32
 
-	cmp r5, #0x2
-	orreq r1, r1, #0x40
-	cmp r5, #0x20
-	orreq r1, r1, #0x40
-	cmp r6, #0x4
-	orreq r1, r1, #0x30
-	cmp r6, #0x5
-	orreq r1, r1, #0x30
+ddr_width_16:
+	/* bank_bits config */
+	cmp r6, #0x3        /* 1x128MB part */
+	orreq r1, r1, #0x30 /* bank_bits: 3 (8banks) */
+	cmp r6, #0x4        /* 1x256MB part */
+	orreq r1, r1, #0x30 /* bank_bits: 3 (8banks) */
+	b ddr_width_end
+
+ddr_width_32:
+	orreq r1, r1, #0x40 /* memory_width: 32bit (2x16bit parts) */
+	/* bank_bits config */
+	cmp r6, #0x4        /* 2x128MB parts = 256MB */
+	orreq r1, r1, #0x30 /* bank_bits: 3 (8banks) */
+	cmp r6, #0x5        /* 2x256MB parts = 512MB */
+	orreq r1, r1, #0x30 /* bank_bits: 3 (8banks) */
+
+ddr_width_end:
 	str r1, [r0, #DMC_MEMORY_CFG2_OFFSET]   /* 0x04C */
 
         /* Set request memory for LCD high priority */
@@ -373,19 +387,19 @@ ddr2_sdram_ctrl_init:
 	str r1, [r0, #DMC_T_MRD_OFFSET]     /* 0x01C */
 
 	mov r1, r6
-	ldr	r5, =CNS3000_VEGA_MISC_BASE
-	ldr	r6, [r5, #0x04]
-	and	r6, r6, #0x600
-	ldr	r5, =0x0	
+	ldr	r5, =CNS3000_VEGA_MISC_BASE     /* 0x7600_0000 MISC */
+	ldr	r6, [r5, #0x04]                 /* 0x7600_0004 CHIP_CFG */
+	and	r6, r6, #0x600                  /* Bit 10:9 DDR2 Clock freq select */
+	ldr	r5, =0x0                        /* 200Mhz */
 	cmp r5, r6
 	beq	ddr_200	
-	ldr	r5, =0x200	
+	ldr	r5, =0x200                      /* 266MHz */	
 	cmp r5, r6
 	beq	ddr_266	
-	ldr	r5, =0x400	
+	ldr	r5, =0x400                      /* 333MHz */
 	cmp r5, r6
 	beq	ddr_333	
-	ldr	r5, =0x600	
+	ldr	r5, =0x600                      /* 400MHz */
 	cmp r5, r6
 	beq	ddr_400	
 
@@ -553,57 +567,60 @@ ddr_clock_end:
 	ldr	r1, =0x000000C8
 	str r1, [r0, #DMC_T_ESR_OFFSET]     /* 0x048 */
 
-	/* */
-	cmp r6, #0x5
-	ldreq r1, =0x0001401A
-	ldrne r1, =0x00014012
-	str r1, [r0, #0x00C]            /* */
+	/* Set burst, row and col size */
+	/* R6 - SDRAM Size (1=32MB, 2=64MB, 3=128MB, 4=256MB, 5=512MB) */
+	cmp r6, #0x5                    /* 512MB (2x256MB part used is 14bit) */
+	ldreq r1, =0x0001401A           /* Burst 4, 10bit cols, 14bit rows */
+	ldrne r1, =0x00014012           /* Burst 4, 10bit cols, 13bit rows */
+	str r1, [r0, #DMC_MEMORY_CFG_OFFSET]  /* 0x00C memory_cfg*/
 
-	/* */
+	/* Set memory refresh period */
 	ldr r1, =0x00000618
-	str r1, [r0, #0x010]            /* */
+	str r1, [r0, #DMC_REFRESH_PRD_OFFSET]           /* 0x010 bit14:0 refresh_prd in clock cycles */
 
+	/* set chip decode config */
 	ldr r1, =0x000000FF
-	str r1, [r0, #0x200]            /* */
+	str r1, [r0, #DMC_CHIP_0_CFG_OFFSET]            /* 0x200 */
 
+	/* direct memory commands */
 	ldr r1, =0x000C0000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]            /* 0x008 */
 
 	ldr r1, =0x00000000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x000A0000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x000B0000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00090004
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00080B62
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00000000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 	
 	ldr r1, =0x00040000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00040000
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00080A62
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00090384
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00090004
-	str r1, [r0, #0x008]
+	str r1, [r0, #DMC_DIRECT_CMD_OFFSET]
 
 	ldr r1, =0x00000000
-	str r1, [r0, #0x004]
+	str r1, [r0, #DMC_MEMC_CMD_OFFSET]
 
 
 	/* Set t_faw = 15 * mclk */

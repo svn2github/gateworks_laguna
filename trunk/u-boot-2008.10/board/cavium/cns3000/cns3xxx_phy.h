@@ -37,11 +37,11 @@
 
 void disable_AN(int port, int y);
 
-u16 get_phy_id(u8 phy_addr);
+u32 get_phy_id(u8 phy_addr);
 int cns3xxx_std_phy_power_down(int phy_addr, int y);
 u32 get_vsc8601_recv_err_counter(u8 phy_addr);
 u32 get_crc_good_counter(u8 phy_addr);
-int cns3xxx_config_VSC8601(u8 mac_port, u8 phy_addr);
+int cns3xxx_config_macphy(u8 mac_port, u8 phy_addr);
 int vsc8601_power_down(int phy_addr, int y);
 int icp_101a_init(u8 mac_port, u8 phy_addr);
 int bcm53115M_init(u8 mac_port, u16 phy_addr);

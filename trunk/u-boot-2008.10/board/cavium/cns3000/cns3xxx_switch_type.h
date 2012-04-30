@@ -57,11 +57,11 @@
 
 
 #ifdef CONFIG_VB
-#define INIT_PORT0_PHY cns3xxx_config_VSC8601(0, 0);
+#define INIT_PORT0_PHY cns3xxx_config_macphy(0, 0);
 #define PORT0_LINK_DOWN cns3xxx_std_phy_power_down(0, 1);;
 #define PORT0_LINK_UP cns3xxx_std_phy_power_down(0, 0);
 
-#define INIT_PORT1_PHY cns3xxx_config_VSC8601(1, 1);
+#define INIT_PORT1_PHY cns3xxx_config_macphy(1, 1);
 #define PORT1_LINK_DOWN cns3xxx_std_phy_power_down(1, 1);;
 #define PORT1_LINK_UP cns3xxx_std_phy_power_down(1, 0);
 

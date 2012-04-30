@@ -135,6 +135,7 @@ int cns3xxx_read_phy(u8 phy_addr, u8 phy_reg, u16 *read_data)
 	*read_data = (PHY_CTRL_REG >> 16);
 
 	PHY_CTRL_REG |= (1 << 15); // clear "command completed" bit
+//	printf("read_phy(%d, 0x%0x)=%x\n", phy_addr, phy_reg, *read_data);
 
 	return CAVM_OK;
 }
@@ -221,34 +222,37 @@ int cns3xxx_std_phy_power_down(int phy_addr, int y)
         return 0;
 }
 
-u16 get_phy_id(u8 phy_addr)
+u32 get_phy_id(u8 phy_addr)
 {
+	u32 id;
 	u16 read_data;
 
 	cns3xxx_read_phy(phy_addr, 2, &read_data);
+	id = read_data << 16;
+	cns3xxx_read_phy(phy_addr, 1, &read_data);
+	id |= read_data;
 
-	return read_data;
+	return id;
 }
 
-int cns3xxx_config_VSC8601(u8 mac_port, u8 phy_addr)
+int cns3xxx_config_macphy(u8 mac_port, u8 phy_addr)
 {
         u16 phy_data=0;
 	u32 mac_port_config=0;
-	u16 phy_id=0;
+	u32 phy_id=0;
 	
 	cns3xxx_mdc_mdio_disable(0);
 
-	cns3xxx_read_phy(phy_addr, 0, &phy_data);
 	// software reset
+	cns3xxx_read_phy(phy_addr, 0, &phy_data);
 	phy_data |= (0x1 << 15); 
 	cns3xxx_write_phy(phy_addr, 0, phy_data);
 	udelay(10);
 
 	phy_id = get_phy_id(phy_addr);
-	if (phy_id != 0x143) {
-		return CAVM_ERR;
-	}
+	printf ("phy%d:%d=0x%0x ", mac_port, phy_addr, phy_id);
 
+	// get mac config for port
 	switch (mac_port)
 	{
 		case 0:
@@ -269,21 +273,46 @@ int cns3xxx_config_VSC8601(u8 mac_port, u8 phy_addr)
 	}
 		
 	cns3xxx_enable_mac_clock(mac_port, 1);
-        
-	// enable RGMII-PHY mode
-	mac_port_config |= (0x1 << 15);
 
 	// If mac AN turns on, auto polling needs to turn on.
-  // enable PHY's AN
-	mac_port_config |= (0x1 << 7);
+	mac_port_config |= (0x1 << 7); // enable PHY's AN
 	cns3xxx_phy_auto_polling_conf(mac_port, phy_addr); 
 	
 	// enable GSW MAC port 0
 	mac_port_config &= ~(0x1 << 18);
 
 	// normal MII
-	mac_port_config &= (~(1 << 14));
+	mac_port_config &= ~(0x1 << 14);
 
+	switch(phy_id >> 16) {
+	case 0x0143: // Broadcom BCM5481
+		mac_port_config |= (0x1 << 15); // RGMII-PHY mode
+		// config tx/rx delays and LED's
+		cns3xxx_write_phy(phy_addr, 0x18, 0xf1e7);
+		//cns3xxx_write_phy(phy_addr, 0x18, 0x4400);
+		cns3xxx_write_phy(phy_addr, 0x1c, 0x8e00);
+		//cns3xxx_write_phy(phy_addr, 0x10, 0x21);
+		cns3xxx_write_phy(phy_addr, 0x10, 0x20);
+		cns3xxx_write_phy(phy_addr, 0x1c, 0xa41f);
+		cns3xxx_write_phy(phy_addr, 0x1c, 0xb41a);
+		cns3xxx_write_phy(phy_addr, 0x1c, 0xb863);
+		cns3xxx_write_phy(phy_addr, 0x17, 0xf04);
+		cns3xxx_write_phy(phy_addr, 0x15, 0x1);
+		cns3xxx_write_phy(phy_addr, 0x17, 0x0);
+		break;
+
+	case 0x2000: // National DP83848
+		mac_port_config &= ~(0x1 << 16); // 10/100 Mbps
+		mac_port_config &= ~(0x1 << 15); // MII-PHY mode
+		break;
+
+	default:
+		printf ("no supported phys detected ");
+		return CAVM_ERR;
+	}
+	//printf ("MAC%d_CFG=0x%04x\n", mac_port, mac_port_config);
+
+	// set mac config for port
 	switch (mac_port)
 	{
 		case 0:
@@ -302,35 +331,5 @@ int cns3xxx_config_VSC8601(u8 mac_port, u8 phy_addr)
 			break;
 		}
 	}
-	
-    /*
-     * Enable full-duplex mode
-     */
-
-	// an enable
-	phy_data |= (0x1 << 12); 
-
-	// restart AN
-	phy_data |= (0x1 << 9); 
-
-#ifdef CONFIG_CNS3XXX_JUMBO_FRAME
-        phy_data &= ~(0x3 << 10); //set Jumbo frame mode
-        phy_data |=  (0x3 << 10); //set 16KB
-#endif
-
-	//PHY_AUTO_ADDR_REG |= 0xc0000000;
-
-	cns3xxx_write_phy(phy_addr, 0x18, 0xf1e7);
-	//cns3xxx_write_phy(phy_addr, 0x18, 0x4400);
-	cns3xxx_write_phy(phy_addr, 0x1c, 0x8e00);
-	//cns3xxx_write_phy(phy_addr, 0x10, 0x21);
-	cns3xxx_write_phy(phy_addr, 0x10, 0x20);
-	cns3xxx_write_phy(phy_addr, 0x1c, 0xa41f);
-	cns3xxx_write_phy(phy_addr, 0x1c, 0xb41a);
-	cns3xxx_write_phy(phy_addr, 0x1c, 0xb863);
-	cns3xxx_write_phy(phy_addr, 0x17, 0xf04);
-	cns3xxx_write_phy(phy_addr, 0x15, 0x1);
-	cns3xxx_write_phy(phy_addr, 0x17, 0x0);
-
-	return CAVM_OK;
 }
+

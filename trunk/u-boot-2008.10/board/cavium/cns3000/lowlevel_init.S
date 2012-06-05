@@ -158,6 +158,8 @@ i2c_read_byte:
 	nop
 	nop
 	nop
+	nop
+	nop
 
 	mov r3, r10
 	mov lr, r11

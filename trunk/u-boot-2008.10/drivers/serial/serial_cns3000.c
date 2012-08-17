@@ -40,7 +40,7 @@ int serial_init (void)
 
 	/* Hardware Initialization. */
 #if 1
-	/* Enable clock for UART 0 */
+	/* Enable clock for UART 0,1,2 */
 #define PMU_CLK_GATE_REG 0x77000000
 #define PMU_SOFT_RST	 0x77000004
 	temp = IO_READ(PMU_CLK_GATE_REG);
@@ -100,7 +100,7 @@ int serial_init (void)
 		(UART_CNS3000_LCR_WLEN_8 | UART_CNS3000_LCR_STOP_BIT_1 | UART_CNS3000_LCR_PARITY_NONE));
 	IO_WRITE (port[1] + UART_CNS3000_LCR,
 		(UART_CNS3000_LCR_WLEN_8 | UART_CNS3000_LCR_STOP_BIT_1 | UART_CNS3000_LCR_PARITY_NONE));
-	IO_WRITE (port[1] + UART_CNS3000_LCR,
+	IO_WRITE (port[2] + UART_CNS3000_LCR,
 		(UART_CNS3000_LCR_WLEN_8 | UART_CNS3000_LCR_STOP_BIT_1 | UART_CNS3000_LCR_PARITY_NONE));
 
 	/* Set the UART to fifo enabled. */

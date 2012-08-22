@@ -78,11 +78,7 @@
 /*
  * Hardware drivers
  */
-
-/*
- * select serial console configuration
- */
-#define CFG_CNS3000_CONSOLE	CNS3000_UART1	/* we use UART1 for console */
+#define GPIOA_PERST			2
 
 /*
  * NS16550 Configuration
@@ -92,6 +88,9 @@
 # define CFG_SERIAL2		0x78800000
 # define CFG_SERIAL3		0x78C00000
 
+/*
+ * select serial console configuration
+ */
 #define CONFIG_CNS3000_SERIAL
 #define CONFIG_CNS3000_CLOCK	24000000
 #define CONFIG_CNS3000_PORTS	{ (void *)CFG_SERIAL0, (void *)CFG_SERIAL1, (void *)CFG_SERIAL2 }

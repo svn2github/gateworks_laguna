@@ -76,6 +76,8 @@ static inline void delay (unsigned long loops)
 #define PMU_SOFT_RST   0x77000004
 #define PCIE0_PHY_ERRATA 0x76000940
 #define PCIE1_PHY_ERRATA 0x76000A40
+#define GPIOA_DIR 0x74000008
+#define GPIOA_OUT 0x74000000
 
 static void pcie_init(void)
 {
@@ -84,6 +86,25 @@ static void pcie_init(void)
 
 	IO_WRITE(PCIE0_PHY_ERRATA, 0xe2c);
 	IO_WRITE(PCIE1_PHY_ERRATA, 0xe2c);
+
+#ifdef GPIOA_PERST
+	/* enable and toggle GPIOA-x PERST#
+	 * (to meet PCIe specification of PERST# being asserted up to 100us
+	 *  after REFCLK is stable)
+	 */
+	temp = IO_READ(GPIOA_DIR);
+	temp |= (1 << GPIOA_PERST); // output
+	IO_WRITE(GPIOA_DIR, temp);
+
+	temp = IO_READ(GPIOA_OUT);
+	temp &= ~(1 << GPIOA_PERST); // low
+	IO_WRITE(GPIOA_OUT, temp);
+
+	udelay(1000);
+
+	temp |= (1 << GPIOA_PERST); // high
+	IO_WRITE(GPIOA_OUT, temp);
+#endif
 
 	i2c_read(0x51, 0x43, 1, &eeprom, 1);
 	if (eeprom & 0x2) // pcie0 init

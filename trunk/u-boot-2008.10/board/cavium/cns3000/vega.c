@@ -43,6 +43,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 static ulong timestamp;
 static ulong lastdec;
+uint8_t model[16];
 
 #define READ_TIMER1 (*(volatile ulong *)(CFG_TIMERBASE))
 #define READ_TIMER2 (*(volatile ulong *)(CFG_TIMERBASE + 0x10))
@@ -83,28 +84,36 @@ static void pcie_init(void)
 {
 	unsigned char eeprom;
 	unsigned int temp;
+	int gpio_perst = -1;
 
 	IO_WRITE(PCIE0_PHY_ERRATA, 0xe2c);
 	IO_WRITE(PCIE1_PHY_ERRATA, 0xe2c);
 
 #ifdef GPIOA_PERST
+	gpio_perst = GPIOA_PERST;
+	if (strncmp(model, "GW2391", 6) == 0) {
+		gpio_perst = 8;
+	}
+#endif
+
 	/* enable and toggle GPIOA-x PERST#
 	 * (to meet PCIe specification of PERST# being asserted up to 100us
 	 *  after REFCLK is stable)
 	 */
-	temp = IO_READ(GPIOA_DIR);
-	temp |= (1 << GPIOA_PERST); // output
-	IO_WRITE(GPIOA_DIR, temp);
+	if (gpio_perst != -1) {
+		temp = IO_READ(GPIOA_DIR);
+		temp |= (1 << gpio_perst); // output
+		IO_WRITE(GPIOA_DIR, temp);
 
-	temp = IO_READ(GPIOA_OUT);
-	temp &= ~(1 << GPIOA_PERST); // low
-	IO_WRITE(GPIOA_OUT, temp);
+		temp = IO_READ(GPIOA_OUT);
+		temp &= ~(1 << gpio_perst); // low
+		IO_WRITE(GPIOA_OUT, temp);
 
-	udelay(1000);
+		udelay(1000);
 
-	temp |= (1 << GPIOA_PERST); // high
-	IO_WRITE(GPIOA_OUT, temp);
-#endif
+		temp |= (1 << gpio_perst); // high
+		IO_WRITE(GPIOA_OUT, temp);
+	}
 
 	i2c_read(0x51, 0x43, 1, &eeprom, 1);
 	if (eeprom & 0x2) // pcie0 init
@@ -179,7 +188,6 @@ int misc_init_r (void)
 	uint8_t env_enetaddr[6];
 	uint32_t serial = 0;
 	uint8_t date[4];
-	uint8_t model[16];
 
 	char ethaddr[20];
 
@@ -188,7 +196,6 @@ int misc_init_r (void)
   char *tmp2 = getenv("eth2addr");
   char *end;
 
-	i2c_read(0x51, 0x30, 1, model, 16);
 	i2c_read(0x51, 0x20, 1, date, 4);
 	i2c_read(0x51, 0x18, 1, eeprom_enetaddr, 4);
 	serial |= ((eeprom_enetaddr[0]) | (eeprom_enetaddr[1] << 8) |
@@ -263,6 +270,8 @@ int misc_init_r (void)
 *************************************************************/
 int checkboard(void)
 {
+	i2c_read(0x51, 0x30, 1, model, 16);
+
 	pcie_init();
 	return (0);
 }

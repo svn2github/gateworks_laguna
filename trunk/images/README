@@ -1,0 +1,8 @@
+Gateworks Laguna product family pre-built Firmware Images:
+ - Gateworks System Controller Images: gsc_<model>_<version>.txt
+   - See http://trac.gateworks.com/wiki/gsc
+ - Bootloader Images: u-boot_<flashtype>.bin
+ - FLASH Images: laguna_image_<flashtype>.bin
+
+For information on which FLASH type your board has please see:
+ http://trac.gateworks.com/wiki/laguna_family

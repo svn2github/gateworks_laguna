@@ -1116,8 +1116,11 @@ int mmc_init(int verbose)
 	if (verbose)
 		printf("mmc_init\n");
 
+#if 0 // do not rely on inconsistant card detect signal 
+printf("0x%08x=0x%08x\n", CNS3000_VEGA_SDIO_BASE+0x24, MMC_READ_REGl(CNS3000_VEGA_SDIO_BASE + 0x24));
 	if (!((MMC_READ_REGl(CNS3000_VEGA_SDIO_BASE + 0x24) >> 16) & 0x01))
 		return ret;
+#endif
 		
 	/* power on SD bus, 3.3V */
 	MMC_WRITE_REGb((CNS3000_VEGA_SDIO_BASE + 0x29), 0x0f);

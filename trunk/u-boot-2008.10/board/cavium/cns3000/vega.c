@@ -53,7 +53,7 @@ static void timer_init(void);
 #if defined(CONFIG_SHOW_BOOT_PROGRESS)
 void show_boot_progress(int progress)
 {
-    printf("Boot reached stage %d\n", progress);
+	printf("Boot reached stage %d\n", progress);
 }
 #endif
 
@@ -79,13 +79,18 @@ static inline void delay (unsigned long loops)
 #define PCIE1_PHY_ERRATA 0x76000A40
 #define GPIOA_DIR 0x74000008
 #define GPIOA_OUT 0x74000000
+#define GPIOB_DIR 0x74800008
+#define GPIOB_IN  0x74800004
+#define GPIOB_OUT 0x74800000
 
 static void pcie_init(void)
 {
 	unsigned char eeprom;
 	unsigned int temp;
+	unsigned char external_clkgen;
 	int gpio_perst = -1;
 
+	/* Errata C-01 */
 	IO_WRITE(PCIE0_PHY_ERRATA, 0xe2c);
 	IO_WRITE(PCIE1_PHY_ERRATA, 0xe2c);
 
@@ -96,65 +101,98 @@ static void pcie_init(void)
 	}
 #endif
 
-	/* enable and toggle GPIOA-x PERST#
-	 * (to meet PCIe specification of PERST# being asserted up to 100us
-	 *  after REFCLK is stable)
+	/*
+	 * Detect board revision by looking at GPIOB[16:32]
+	 * - GW2388-4-G and above GPIOB[26:29] connected to INTA/B/C/D w/ pu
+	 * - other Laguna boards have nc and thus will read low
+	 *
+	 * GW2388-4-G and above have an external clockgen for improved PCIe
+	 * stability with TI XIO2001 PCIe to PCI switch.
 	 */
+	temp = IO_READ(GPIOB_IN) >> 16;
+	external_clkgen = ((temp & 0x3c00) == 0x3c00) ? 1 : 0;
+
+	printf("PCI:   PERST:GPIOA%d clock:%s\n", gpio_perst,
+	       external_clkgen ? "external" : "internal");
+
+	/* enable and assert PERST# */
 	if (gpio_perst != -1) {
 		temp = IO_READ(GPIOA_DIR);
-		temp |= (1 << gpio_perst); // output
+		temp |= (1 << gpio_perst);  /* output */
 		IO_WRITE(GPIOA_DIR, temp);
 
 		temp = IO_READ(GPIOA_OUT);
-		temp &= ~(1 << gpio_perst); // low
-		IO_WRITE(GPIOA_OUT, temp);
-
-		udelay(1000);
-
-		temp |= (1 << gpio_perst); // high
+		temp &= ~(1 << gpio_perst); /* low */
 		IO_WRITE(GPIOA_OUT, temp);
 	}
 
 	i2c_read(0x51, 0x43, 1, &eeprom, 1);
-	if (eeprom & 0x2) // pcie0 init
-	{
-	  temp = IO_READ(PCIE_CLK_GATE_REG);
-	  temp |= (1 << 28);
-	  IO_WRITE(PCIE_CLK_GATE_REG, temp);
 
-	  temp = IO_READ(MISC_PCIE0_REG);
-	  temp |= (1 << 11);
-	  IO_WRITE(MISC_PCIE0_REG, temp);
+	/* pcie0 init */
+	if (eeprom & 0x2) {
+		if (external_clkgen) {
+			/* select external clock */
+			temp = IO_READ(MISC_PCIE0_REG);
+			temp &= ~(1 << 11);
+			IO_WRITE(MISC_PCIE0_REG, temp);
+		} else {
+			/* enable PCIe Ref clock 0 */
+			temp = IO_READ(PCIE_CLK_GATE_REG);
+			temp |= (1 << 28);
+			IO_WRITE(PCIE_CLK_GATE_REG, temp);
+			/* select internal clock */
+			temp = IO_READ(MISC_PCIE0_REG);
+			temp |= (1 << 11);
+			IO_WRITE(MISC_PCIE0_REG, temp);
+		}
 
-	  temp = IO_READ(PMU_SOFT_RST);
-	  temp &= ~(1 << 17);
-	  IO_WRITE(PMU_SOFT_RST, temp);
-	  temp |= (1 << 17);
-	  IO_WRITE(PMU_SOFT_RST, temp);
-
+		/* soft reset PCIe0 */
+		temp = IO_READ(PMU_SOFT_RST);
+		temp &= ~(1 << 17);
+		IO_WRITE(PMU_SOFT_RST, temp);
+		temp |= (1 << 17);
+		IO_WRITE(PMU_SOFT_RST, temp);
+		/* exit L1 and enable LTSSM */
 		temp = IO_READ(PCIE0_CTRL);
 		temp |= 0x3;
 		IO_WRITE(PCIE0_CTRL, temp);
 	}
-	if (eeprom & 0x4) // pcie1 init
-	{
-	  temp = IO_READ(PCIE_CLK_GATE_REG);
-	  temp |= (1 << 29);
-	  IO_WRITE(PCIE_CLK_GATE_REG, temp);
 
-	  temp = IO_READ(MISC_PCIE1_REG);
-	  temp |= (1 << 11);
-	  IO_WRITE(MISC_PCIE1_REG, temp);
+	/* pcie1 init */
+	if (eeprom & 0x4) {
+		if (external_clkgen) {
+			/* select external clock */
+			temp = IO_READ(MISC_PCIE1_REG);
+			temp &= ~(1 << 11);
+			IO_WRITE(MISC_PCIE1_REG, temp);
+		} else {
+			/* enable PCIe Ref clock 1 */
+			temp = IO_READ(PCIE_CLK_GATE_REG);
+			temp |= (1 << 29);
+			IO_WRITE(PCIE_CLK_GATE_REG, temp);
+			/* select internal clock */
+			temp = IO_READ(MISC_PCIE1_REG);
+			temp |= (1 << 11);
+			IO_WRITE(MISC_PCIE1_REG, temp);
+		}
 
-	  temp = IO_READ(PMU_SOFT_RST);
-	  temp &= ~(1 << 18);
-	  IO_WRITE(PMU_SOFT_RST, temp);
-	  temp |= (1 << 18);
-	  IO_WRITE(PMU_SOFT_RST, temp);
-
+		/* soft reset PCIe1 */
+		temp = IO_READ(PMU_SOFT_RST);
+		temp &= ~(1 << 18);
+		IO_WRITE(PMU_SOFT_RST, temp);
+		temp |= (1 << 18);
+		IO_WRITE(PMU_SOFT_RST, temp);
+		/* exit L1 and enable LTSSM */
 		temp = IO_READ(PCIE1_CTRL);
 		temp |= 0x3;
 		IO_WRITE(PCIE1_CTRL, temp);
+	}
+
+	/* de-assert PERST# after some delay for clock to become stable */
+	if (gpio_perst != -1) {
+		udelay(1000);
+		temp |= (1 << gpio_perst); /* high */
+		IO_WRITE(GPIOA_OUT, temp);
 	}
 }
 
@@ -191,20 +229,21 @@ int misc_init_r (void)
 
 	char ethaddr[20];
 
-  char *tmp = getenv("ethaddr");
-  char *tmp1 = getenv("eth1addr");
-  char *tmp2 = getenv("eth2addr");
-  char *end;
+	char *tmp = getenv("ethaddr");
+	char *tmp1 = getenv("eth1addr");
+	char *tmp2 = getenv("eth2addr");
+	char *end;
 
 	i2c_read(0x51, 0x20, 1, date, 4);
 	i2c_read(0x51, 0x18, 1, eeprom_enetaddr, 4);
 	serial |= ((eeprom_enetaddr[0]) | (eeprom_enetaddr[1] << 8) |
-						(eeprom_enetaddr[2] << 16) | (eeprom_enetaddr[3] << 24));
+	          (eeprom_enetaddr[2] << 16) | (eeprom_enetaddr[3] << 24));
 
 
 	printf("Gateworks Corporation Copyright 2010\n");
 	printf("Model Number: %s\n", model);
-	printf("Manufacturer Date: %02x-%02x-%02x%02x\n", date[0], date[1], date[2], date[3]);
+	printf("Manufacturer Date: %02x-%02x-%02x%02x\n", date[0], date[1],
+	       date[2], date[3]);
 	printf("Serial #: %i\n", serial);	
 
 	i2c_read(0x51, 0x0, 1, eeprom_enetaddr, 6);

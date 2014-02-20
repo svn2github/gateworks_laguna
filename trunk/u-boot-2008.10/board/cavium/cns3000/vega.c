@@ -101,16 +101,8 @@ static void pcie_init(void)
 	}
 #endif
 
-	/*
-	 * Detect board revision by looking at GPIOB[16:32]
-	 * - GW2388-4-G and above GPIOB[26:29] connected to INTA/B/C/D w/ pu
-	 * - other Laguna boards have nc and thus will read low
-	 *
-	 * GW2388-4-G and above have an external clockgen for improved PCIe
-	 * stability with TI XIO2001 PCIe to PCI switch.
-	 */
-	temp = IO_READ(GPIOB_IN) >> 16;
-	external_clkgen = ((temp & 0x3c00) == 0x3c00) ? 1 : 0;
+	/* boards with external PCI clockgen have GPIOB26 high at powerup */
+	external_clkgen = (IO_READ(GPIOB_IN) & (1 << 26)) ? 1 : 0;
 
 	printf("PCI:   PERST:GPIOA%d clock:%s\n", gpio_perst,
 	       external_clkgen ? "external" : "internal");

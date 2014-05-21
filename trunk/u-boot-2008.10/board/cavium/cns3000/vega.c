@@ -183,6 +183,7 @@ static void pcie_init(void)
 	/* de-assert PERST# after some delay for clock to become stable */
 	if (gpio_perst != -1) {
 		udelay(1000);
+		temp = IO_READ(GPIOA_OUT);
 		temp |= (1 << gpio_perst); /* high */
 		IO_WRITE(GPIOA_OUT, temp);
 	}
